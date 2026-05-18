@@ -246,11 +246,27 @@ By hard-coding a deterministic physical-layer synchronization mechanism and enfo
 
 All of this was accomplished without adding a single cycle of pipeline latency, keeping our wire-to-wire budget strictly locked at **36ns**.
 
+![tcl](img/tclover2.png)
+
+
 ### The Simulation Report (Vivado XSim)
 
 Only 1 logic level its snow fpga always
+### How the Final 2.2% Was Won (Physical Layer Breakdown)
 
+1. **Eliminating CDC Metastability Without Latency Penalties**
+   Instead of falling back on standard, high-latency elastic buffers that ruin the latency budget, the alignment logic was redesigned to exploit the deterministic phase relationships of the **GTH PMA** recovered clock. The tracking state machine now resolves raw word alignment within the sub-nanosecond windows dictated by the **25 PPM frequency offset**.
 
+2. **Strict Combinational Logic Gating (< 2 Levels)**
+   The critical path from `gt_rx_data_out[63:0]` to `parsed_msg_valid` was mercilessly flattened. By strictly restricting the asynchronous clock domain crossing to a manual **Triple-FF synchronization** structure with less than two levels of combinational logic, we prevented any multi-bit skew from tearing the data vectors apart.
 
+3. **Vivado TCL-Locked Floorplanning & Timing Closure**
+   As shown in the hardware layout, the entire `u_omdc_top` core has been tightly constrained into a dedicated **PBLOCK** right adjacent to the transceiver columns. 
+   * **Operating Frequency:** 322.56 MHz (3.1ns clock cycle)
+   * **Worst Negative Slack (WNS):** +0.593 ns setup slack remaining on the most critical control paths (`u_rx...sg_valid_reg/C` to `u_tx...state_reg[1]/CE`). 
+   * **Total Logic Delay:** Slashed down to a mere **0.176 ns**, ensuring the design easily survives real-world clock distribution jitter.
 
+![devicel](img/device.png)
+
+![pysim3](img/pysim3.png)
 
