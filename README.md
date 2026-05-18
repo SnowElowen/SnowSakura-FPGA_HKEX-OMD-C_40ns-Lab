@@ -270,3 +270,42 @@ Only 1 logic level its snow fpga always
 
 ![pysim3](img/pysim3.png)
 
+##  Phase 1 Complete: Pre-University Milestone Achieved
+
+As of today, all architectural objectives set for my pre-university phase have been flawlessly executed. The single-path parser is officially locked at 100% zero-loss under real-world line distortions.
+
+This will be the final major update before university starts. The repository is now entering a strategic stabilization and deep-refinement phase.
+
+---
+
+##  The Next Frontier: Dual-Path Line A/B Arbitration & Retransmission
+
+The next step is where the architecture faces true hardware-level complexity: handling the HKEX OMD-C Dual-Path (`Line A` and `Line B`) feed over 10G Ethernet. 
+
+In real-world production trading, packets can be dropped or delayed on either line due to network jitter. To achieve absolute resilience, the engine must ingest both paths simultaneously, arbitrate the first-arriving valid packet, and maintain state for gap detection—all without blowing the latency budget.
+
+### The 2-Cycle Challenge
+My architectural constraint for Dual-Path Arbitration and Retransmission logic is strictly locked at **2 clock cycles (6.2 ns @ 322.56 MHz)**. 
+
+This is not a simple state machine job. Within these 2 cycles, the RTL must:
+1. **Decode & Compare:** Parse the sequence numbers of both paths incoming from the asynchronous CDC boundaries.
+2. **Arbitrate:** Route the first-arriving packet to the downstream parser while masking the duplicate packet from the redundant line.
+3. **Trigger Retransmission Request (Ouch):** Detect gaps in sequence numbers and immediately flag a retransmission trigger to the TCP/IP recovery module.
+
+Executing multi-bit sequence comparison, dual-path multiplexing, and error-flag generation within a 2-cycle physical budget means there is zero room for heavy combinational logic. Every path must be meticulously balanced across individual registers to prevent **Setup/Hold time** violations.
+
+---
+
+## Strategic Pause for Deep Verilog Refinement
+
+To implement this without breaking the **36ns wire-to-wire** rule, I am pausing public updates to focus entirely on advanced Verilog optimizations and physical routing mechanics. 
+
+By the time I hit my 20th birthday during my freshman year, the objective is clear: **Simultaneous Dual-Path Zero-Loss Ingestion with Instantaneous Arbitration.**
+
+This groundwork ensures that when the physical **Zynq UltraScale+ ZU15EG** hardware is acquired during my sophomore year, the entire bitstream will achieve timing closure and perfect hardware validation on the very first flashing.
+
+Thank you to everyone following the development of Project SnowSakura-FPGA. 
+
+Signing off for now,
+**Snow Elowen**
+Thanks 
