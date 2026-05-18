@@ -298,7 +298,7 @@ Executing multi-bit sequence comparison, dual-path multiplexing, and error-flag 
 
 ## Strategic Pause for Deep Verilog Refinement
 
-To implement this without breaking the **36ns wire-to-wire** rule, I am pausing public updates to focus entirely on advanced Verilog optimizations and physical routing mechanics. 
+To implement this without breaking the **40ns wire-to-wire** rule, I am pausing public updates to focus entirely on advanced Verilog optimizations and physical routing mechanics. 
 
 By the time I hit my 20th birthday during my freshman year, the objective is clear: **Simultaneous Dual-Path Zero-Loss Ingestion with Instantaneous Arbitration.**
 
