@@ -265,7 +265,10 @@ Only 1 logic level its snow fpga always
    * **Operating Frequency:** 322.56 MHz (3.1ns clock cycle)
    * **Worst Negative Slack (WNS):** +0.593 ns setup slack remaining on the most critical control paths (`u_rx...sg_valid_reg/C` to `u_tx...state_reg[1]/CE`). 
    * **Total Logic Delay:** Slashed down to a mere **0.176 ns**, ensuring the design easily survives real-world clock distribution jitter.
-I have translated the comments and refactored my testbench; it's ready for testing whenever needed
+
+4.  **I have translated the comments and refactored my testbench; it's ready for testing whenever needed**
+
+
 ![device](img/device1.png)
 
 ![pysim3](img/pysim3.png)
