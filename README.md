@@ -31,7 +31,7 @@ In HFT, software architecture is an illusion; only **Physical Layer Logic** dict
 
 Relying on Vivado's Auto-Router for OMD-C parsing is a death sentence. To squeeze latency down to 31.5ns, every **LUT**, every **Register**, and every **Routing path** must be manually constrained via precise XDC definitions.
 
-## 2026-03-18 JST
+## 2026-03-18 
 Initial ZU15EG physical timing log: Stage 1 routing, Stage 2 floorplanning, Stage 3 full pipeline squeeze
 
 ### Stage 1: Datapath Routing & Net Delay Suppression
@@ -71,7 +71,7 @@ As the parsing logic scales, the timing window shrinks to its absolute physical 
 We are running `GTH Raw Mode` on the Ultrascale+ architecture, stripping away all non-essential protocol overhead (e.g., standard 802.3 buffers, PCS alignment primitives) for direct hardware parallel data access. 
 ![Physical_Mapping](img/enasim4x2_.png)
 
-## 2026-04-29 JST
+## 2026-04-29 
 Phase 3 RX-Parser-TX single-channel validation and manual routing schematic update
 
 * **Highlight:** The cursor measurements demonstrate deterministic, extreme low-cycle latency from Start-of-Packet (SoP) detection directly to the Parser Output pulse. 
@@ -181,7 +181,7 @@ This period of extreme **Physical Layer** squeezing has allowed me to truly achi
 * **Physical Layer Precision** – Achieved stable **HKEX OMD-C v1.45** binary parsing at a line speed of **322.56MHz**. This refactor optimizes the **GTH Raw Mode** data path, ensuring significantly tighter alignment and reduced jitter during high-density bursts.
 * **Special Acknowledgments** – I would like to extend my deepest gratitude to **Frank Bruno**. His invaluable insights and technical guidance on high-speed serial interfaces were the catalyst for this breakthrough. Without his mentorship, reaching the **7,000+** packet milestone in this timeframe would not have been possible.
 
-## 2026-05-15 JST
+## 2026-05-15 
 First simulation release with public tb_omdc_top.v and raw_data.hex stress-test dataset
 
 ### ### Next Steps
@@ -245,7 +245,7 @@ I’m not just writing Verilog; I’m performing Surgery on Silicon.
 This isn't a routing result; 
 it's a Physical Geometry enforced on the **ZU15EG** fabric. Every Metal Point is exactly where it must be to maintain the 322.56 MHz phase integrity.
 
-## 2026-05-18 JST
+## 2026-05-18
 100% zero-loss completion and Phase 1 pre-university milestone
 
 BREAKING: 100% Zero-Loss Achieved Under Extreme Physical Layer Distortions
