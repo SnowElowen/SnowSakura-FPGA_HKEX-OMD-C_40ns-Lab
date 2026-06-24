@@ -2,7 +2,8 @@
 ## Target: 22nsLogicLatency（MAC+Parser）+18nsPMALATENCY Deterministic for HKEX-OMD-C 
 
 ## 2026 2.10
-
+Some people may assume that I came out of a well-equipped lab, a research group, or an institutional environment.
+I did not.
 Built From Almost Nothing
 
 This project was not built in a university lab.
@@ -30,7 +31,9 @@ One laptop.
 One desk lamp.
 
 One pen.
-One chatgpt.
+And
+One GPT.
+![lab](img/mylab.jpeg)
 
 And the decision to keep going.
 ---
