@@ -3,6 +3,36 @@
 
 ## 2026 2.10
 
+Built From Almost Nothing
+
+This project was not built in a university lab.
+
+There is no professor behind it, no research group, no company team, no hidden institutional support, and no ready-made hardware lab.
+
+This is my environment: one laptop, one desk lamp, one pen, public documentation, and myself.
+
+That is all I had when I started building SnowSakura-FPGA.
+
+Every RTL file, every testbench, every timing report, every post-simulation result, every architecture revision, and every physical-layer correction in this repository came from independent learning and repeated engineering iteration.
+
+I built this project by reading documentation, writing code, breaking assumptions, debugging simulations, studying timing paths, and learning how FPGA hardware really behaves through FDREs, LUTs, routing wires, GTH configuration, CDC boundaries, and post-implementation evidence.
+
+This repository is not backed by a lab.
+
+It is not the result of a team.
+
+It is not a polished institutional project.
+
+It is a record of what I am building from almost nothing.
+
+One laptop.
+
+One desk lamp.
+
+One pen.
+One chatgpt.
+
+And the decision to keep going.
 ---
 
 ###  The Logic Arena
