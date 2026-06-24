@@ -29,6 +29,9 @@ In HFT, software architecture is an illusion; only **Physical Layer Logic** dict
 
 Relying on Vivado's Auto-Router for OMD-C parsing is a death sentence. To squeeze latency down to 31.5ns, every **LUT**, every **Register**, and every **Routing path** must be manually constrained via precise XDC definitions.
 
+## 2026-03-18 JST
+Initial ZU15EG physical timing log: Stage 1 routing, Stage 2 floorplanning, Stage 3 full pipeline squeeze
+
 ### Stage 1: Datapath Routing & Net Delay Suppression
 
 ![data](img/s1_routing.jpg)
@@ -66,7 +69,8 @@ As the parsing logic scales, the timing window shrinks to its absolute physical 
 We are running `GTH Raw Mode` on the Ultrascale+ architecture, stripping away all non-essential protocol overhead (e.g., standard 802.3 buffers, PCS alignment primitives) for direct hardware parallel data access. 
 ![Physical_Mapping](img/enasim4x2_.png)
 
-
+## 2026-04-29 JST
+Phase 3 RX-Parser-TX single-channel validation and manual routing schematic update
 
 * **Highlight:** The cursor measurements demonstrate deterministic, extreme low-cycle latency from Start-of-Packet (SoP) detection directly to the Parser Output pulse. 
 
@@ -175,6 +179,9 @@ This period of extreme **Physical Layer** squeezing has allowed me to truly achi
 * **Physical Layer Precision** – Achieved stable **HKEX OMD-C v1.45** binary parsing at a line speed of **322.56MHz**. This refactor optimizes the **GTH Raw Mode** data path, ensuring significantly tighter alignment and reduced jitter during high-density bursts.
 * **Special Acknowledgments** – I would like to extend my deepest gratitude to **Frank Bruno**. His invaluable insights and technical guidance on high-speed serial interfaces were the catalyst for this breakthrough. Without his mentorship, reaching the **7,000+** packet milestone in this timeframe would not have been possible.
 
+## 2026-05-15 JST
+First simulation release with public tb_omdc_top.v and raw_data.hex stress-test dataset
+
 ### ### Next Steps
 
 * **Gate-Level Delta Mapping** – Currently mapping the remaining **28.6%** loss at the gate level.
@@ -236,7 +243,8 @@ I’m not just writing Verilog; I’m performing Surgery on Silicon.
 This isn't a routing result; 
 it's a Physical Geometry enforced on the **ZU15EG** fabric. Every Metal Point is exactly where it must be to maintain the 322.56 MHz phase integrity.
 
-
+## 2026-05-18 JST
+100% zero-loss completion and Phase 1 pre-university milestone
 
 BREAKING: 100% Zero-Loss Achieved Under Extreme Physical Layer Distortions
 
@@ -298,17 +306,27 @@ This is not a simple state machine job. Within these 2 cycles, the RTL must:
 Executing multi-bit sequence comparison, dual-path multiplexing, and error-flag generation within a 2-cycle physical budget means there is zero room for heavy combinational logic. Every path must be meticulously balanced across individual registers to prevent **Setup/Hold time** violations.
 
 ---
+## 2026 6.24
 
-## Strategic Pause for Deep Verilog Refinement
 
-To implement this without breaking the **40ns wire-to-wire** rule, I am pausing public updates to focus entirely on advanced Verilog optimizations and physical routing mechanics. 
 
-By the time I hit my 20th birthday during my freshman year, the objective is clear: **Simultaneous Dual-Path Zero-Loss Ingestion with Instantaneous Arbitration.**
+## Final Architecture Update
 
-This groundwork ensures that when the physical **Zynq UltraScale+ ZU15EG** hardware is acquired during my sophomore year, the entire bitstream will achieve timing closure and perfect hardware validation on the very first flashing.
+The final single-channel architecture has now been defined as a fixed-cycle pipeline:
 
-Thank you to everyone following the development of Project SnowSakura-FPGA. 
+* **3 cycles** for RX normalization
+* **1 cycle** for parser extraction
+* **2 cycles** for arbitration
+* **1 cycle** for TX release
+* plus an explicitly budgeted **18 ns PMA latency** under the GTH Raw Mode / RX-TX Buffer Bypass path
 
-Signing off for now,
-**Snow Elowen**
-Thanks 
+This architecture has been validated through strict post-route SDF timing simulation on the FPGA fabric side, with the PMA latency budget treated as part of the final wire-to-wire target. I have also replaced the earlier testbench with a much stricter verification setup. Looking back, the old testbench clearly had major limitations, especially in how it modeled physical-layer behavior and packet validity.
+
+Compared with what I believed at the beginning of 2026, the gap is enormous. My understanding of the physical layer has changed significantly. I no longer describe the design with vague claims such as “zero jitter.” Instead, the next validation focus is much more concrete: **BER measurement, Eye Scan results, and SFP loopback testing**.
+
+In addition, my original plan to purchase the ZU15EG board during my sophomore year has now been moved forward to July. Around mid-July, I expect to attach real SFP hardware and the actual ZU15EG platform to this project.
+
+I have also updated the repository timestamps. Looking back at this repository, I feel genuinely reflective: at the beginning of 2026, I was still learning logic gates—not even full gate-level circuit design yet. To reach this point during a gap year, starting from that level, has been a significant personal milestone.
+
+This repository is no longer just a collection of timing screenshots. It is the record of a full physical-layer learning curve: from basic logic-gate thinking at the beginning of 2026 to a fixed-cycle GTH Raw Mode architecture with post-route timing evidence, stricter simulation, and an upcoming real ZU15EG + SFP hardware validation phase.
+
