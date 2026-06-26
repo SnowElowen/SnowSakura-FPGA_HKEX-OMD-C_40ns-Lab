@@ -511,13 +511,12 @@ Current and upcoming evidence layers:
 Public repository:
 
 - architecture notes
-- high-level RTL and simulation artifacts
 - selected timing screenshots
 - stress-test direction
 - development log
 
 Private lab:
-
+—Rawmode bypasss Rtl
 - exact XDC/TCL placement strategy
 - exact Pblock coordinates
 - LOC/BEL mappings
