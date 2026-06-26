@@ -1,367 +1,538 @@
-# SnowSakura: Physical Layer Implementation Specs for 15EG  VU9P
-## Target: 22nsLogicLatency（MAC+Parser）+18nsPMALATENCY Deterministic for HKEX-OMD-C 
+# SnowSakura-FPGA
 
-## 2026 2.10
-Some people may assume that I came out of a well-equipped lab, a research group, or an institutional environment.
-I did not.
-Built From Almost Nothing
+## Deterministic Physical-Layer FPGA Architecture for HKEX OMD-C on ZU15EG / VU9P
 
-This project was not built in a university lab.
+**Current architecture target:** fixed-cycle fabric pipeline for HKEX OMD-C market-data normalization, parsing, arbitration, and TX release, with the PMA latency budget treated explicitly instead of hidden inside RTL timing claims.
 
-There is no professor behind it, no research group, no company team, no hidden institutional support, and no ready-made hardware lab.
+**Target devices:** Xilinx Zynq UltraScale+ **XCZU15EG FFVB1156** and Virtex UltraScale+ **VU9P**  
+**Primary clock target:** **322.56 MHz** fabric over-constraint / **322.265625 MHz** standard 10.3125G-related reference point  
+**Transceiver path:** **GTH Raw Mode / RX-TX Buffer Bypass**  
+**Current latency model:** Fabric fixed-cycle path + explicitly budgeted **~18 ns PMA latency**  
+**Current verification focus:** post-route STA, SDF timing simulation, stricter testbench modeling, then real ZU15EG + SFP loopback, Eye Scan, and BER measurement.
 
-This is my environment: one laptop, one desk lamp, one pen, public documentation, and myself.
+---
 
-That is all I had when I started building SnowSakura-FPGA.
+## Current Final Architecture Snapshot — 2026-06-24
 
-Every RTL file, every testbench, every timing report, every post-simulation result, every architecture revision, and every physical-layer correction in this repository came from independent learning and repeated engineering iteration.
+The final single-channel architecture is now defined as a fixed-cycle pipeline:
 
-I built this project by reading documentation, writing code, breaking assumptions, debugging simulations, studying timing paths, and learning how FPGA hardware really behaves through FDREs, LUTs, routing wires, GTH configuration, CDC boundaries, and post-implementation evidence.
+| Stage | Budget | Physical meaning |
+|---|---:|---|
+| RX normalization | 3 cycles | Raw/PCS-lite boundary normalization, alignment-owned valid/data handoff, fixed parser interface |
+| Parser extraction | 1 cycle | Fixed-offset OMD-C field extraction; no runtime barrel shifter in steady-state |
+| Arbitration | 2 cycles | Dual-path-ready arbitration budget; sequence/gap/recovery logic separated from RX physical alignment |
+| TX release | 1 cycle | Pre-registered TX template/control release path |
+| PMA latency | ~18 ns | GTH Raw Mode / Buffer Bypass physical transceiver budget |
 
-This repository is not backed by a lab.
+This replaces the earlier mixed wording around 31.5 ns / 36 ns / 37 ns. The historical logs are preserved below because they show the learning curve and timing evidence progression, but the **active architecture statement** is the 2026-06-24 model.
 
-It is not the result of a team.
+The current verification direction is also stricter than the earlier README language. I no longer treat slogans such as “zero jitter” as proof. The next validation layer is concrete: **BER measurement, Eye Scan, SFP loopback, post-route timing, and hardware evidence**.
 
-It is not a polished institutional project.
+---
 
-It is a record of what I am building from almost nothing.
+## What SnowSakura Is
 
-One laptop.
+SnowSakura-FPGA is a physical-layer FPGA research and implementation project for ultra-low-latency HKEX OMD-C ingestion. The project focuses on the boundary where protocol parsing, timing closure, transceiver behavior, and physical routing interact.
 
-One desk lamp.
+This is not a CPU parser, not a kernel-bypass software stack, not a PCIe capture-card project, and not a vendor-MAC/AXI FIFO demonstration. The design philosophy is to map the fast path directly into FPGA primitives and physical routing resources:
 
-One pen.
-And
-One GPT.
+- **FDRE** boundaries for deterministic cycle ownership
+- **LUT6 / LUT5** logic-depth accounting
+- **CARRY8** only where its dedicated carry chain is physically justified
+- **GTH** Raw Mode / Buffer Bypass path exploration
+- **Pblock**, placement, routing locality, and clock-region awareness
+- post-route **STA**, **SDF timing simulation**, and later board-level BER/Eye evidence
+
+In this project, Verilog is not treated as abstract software. Every fast-path line must eventually correspond to physical resources: flip-flops, LUT inputs, carry-chain segments, local interconnect, switch matrices, clock trees, and routed nets.
+
+---
+
+## Critical Fast-Path Rules
+
+The current SnowSakura fast-path discipline is strict:
+
+1. **No runtime barrel shifter in the steady-state RX path.**  
+   A dynamic `offset +: width` slice maps to a mux/barrel network, not a wire. It is useful in bring-up experiments, but not acceptable in the final fixed-cycle steady-state path.
+
+2. **No 64-way scanner in the final RX path.**  
+   A wide preamble/SFD scanner can be useful for bring-up, but after alignment is locked, the parser must consume a fixed interface.
+
+3. **No Async FIFO in the latency-critical path.**  
+   CDC safety matters, but an elastic FIFO destroys the fixed-cycle fabric budget. The final fast path must be same-domain or phase-related with verified clock interaction.
+
+4. **No unbounded control fanout.**  
+   Parser valid, arbitration select, packet valid, and TX release controls must be replicated or localized when fanout threatens routing delay.
+
+5. **No hidden vendor pipeline.**  
+   Vendor MAC, AXI, or elastic PCS buffering is not part of the flagship latency model unless explicitly counted.
+
+6. **No timing claim without post-route evidence.**  
+   Functional simulation alone is not timing closure. The evidence chain must include reports such as WNS/WHS, logic levels, high-fanout nets, clock interaction, route delay, and eventually hardware BER/Eye results.
+
+---
+
+## Built From Almost Nothing — 2026 2.10
+
+Some people may assume that this project came from a well-equipped lab, a research group, or an institutional environment.
+
+It did not.
+
+This project was not built in a university lab. There is no professor behind it, no research group, no company team, no hidden institutional support, and no ready-made hardware lab.
+
+This was the starting environment:
+
+- one laptop
+- one desk lamp
+- one pen
+- public documentation
+- repeated engineering iteration
+- and one GPT
+
 ![lab](img/mylab.jpeg)
 
-And the decision to keep going.
----
+Every RTL file, every testbench, every timing report, every post-simulation result, every architecture revision, and every physical-layer correction came from independent learning: reading documentation, writing code, breaking assumptions, debugging simulations, studying timing paths, and learning how FPGA hardware actually behaves through FDREs, LUTs, routing wires, GTH configuration, CDC boundaries, and post-implementation evidence.
 
-###  The Logic Arena
-The pursuit of deterministic latency is a lonely road. I am currently **bored** and seeking intellectual **adversaries** or collaborators. Whether you want to **challenge my routing strategy**, discuss **nanosecond-scale bottlenecks**, or require **strategic consultation** for HFT infrastructure:
-
-- **Email:** `ruansheng333@gmail.com`
-- **Status:** Open for deep-dive technical "chess" and advisory.
-
-### Physical Layer Design Philosophy
-
-* **Determinism over Abstraction**: In the realm of 31.5ns latency, standard software stacks are nothing but propagation noise.
-* **Hardware Sovereignty**: We bypass OS kernels, PCIe overhead, and standard IP blocks. Logic is mapped directly to the **GTH Transceiver** and dedicated **LUT** resources via manual routing.
-* **Timing is Law**: Every clock cycle at 322.26MHz counts. If your logic takes more than 10 cycles, you've already lost the trade.
-
----
-*(Detailed XDC constraints are kept in internal private labs due to proprietary physical optimization logic.)*
-# HKEX-OMD-C 31.5ns Parser: Physical Layer Implementation Log
-**Target Device**: Xilinx Zynq UltraScale+ XCZU15EG (FFVB1156)
-**Operating Frequency**: 322.265625 MHz (GTH Raw Mode, Bypassing PCS)
+This repository is the record of that process.
 
 ---
 
-## The Physical Truth of Zero-Jitter Trading
+## The Logic Arena
 
-In HFT, software architecture is an illusion; only **Physical Layer Logic** dictates the outcome. The following logs document the three-stage manual routing and timing closure process for a 31.5ns OMDC parser. 
+I am open to serious technical discussion, adversarial review, and collaboration around FPGA market-data infrastructure, deterministic latency, transceiver bring-up, and nanosecond-scale timing closure.
 
-Relying on Vivado's Auto-Router for OMD-C parsing is a death sentence. To squeeze latency down to 31.5ns, every **LUT**, every **Register**, and every **Routing path** must be manually constrained via precise XDC definitions.
+**Email:** `ruansheng333@gmail.com`  
+**Status:** open for deep-dive technical discussion and advisory work.
 
-## 2026-03-18 
-Initial ZU15EG physical timing log: Stage 1 routing, Stage 2 floorplanning, Stage 3 full pipeline squeeze
+---
+
+# Engineering Log
+
+The following log intentionally preserves the original time stamps and image pointers. Earlier sections may contain historical targets or terminology that were later corrected. The most current architecture is the 2026-06-24 update above.
+
+---
+
+## 2026-03-18 — Initial ZU15EG Physical Timing Log
 
 ### Stage 1: Datapath Routing & Net Delay Suppression
 
 ![data](img/s1_routing.jpg)
 
+At 322 MHz-class timing, routing delay is not background noise. The first major timing lesson was that **Net Delay** can dominate the path even when **Logic Delay** is already small.
 
-The raw battle between **Logic Delay** and **Net Delay**. When operating in the `gt_txusrclk2` domain at 322MHz, the propagation delay across the silicon is your biggest enemy.
-* **Observation**: We manually forced the **Net Delay** to converge around 1.5ns - 1.6ns, keeping the **Logic Delay** strictly under 1ns (e.g., 0.973ns). 
-* **Logic**: If you let the GUI decide your Placement, your Net Delay will spike, and your 31.5ns target will be shattered by routing congestion.
+Observed timing direction from this phase:
+
+- Logic delay was pushed under approximately 1 ns in representative paths.
+- Net delay around the 1.5 ns range became the practical enemy.
+- Placement locality and routing shape mattered as much as RTL structure.
+
+The lesson from this phase was simple: a fast-looking RTL path can still fail if the placement creates a long physical route through switch matrices and interconnect tiles.
 
 ### Stage 2: Floorplanning & Initial Timing Closure
-![Data_Path_Logic](img/s2_floorplan.jpg)
-Initial logic mapping and physical isolation. 
-* **Timing Met**: **WNS (Worst Negative Slack)** secured at **0.708 ns**. **WHS (Worst Hold Slack)** tightly locked at **0.024 ns**.
-* **Logic**: The logic cells (CLEM) are tightly packed to minimize interconnect latency. This is not arbitrary; this is the result of strict **Pblock** constraints. Zero failing endpoints mean the Triple-FF synchronization logic is physically solid.
 
-### Stage 3: Full Pipeline Squeeze @ 322MHz
+![Data_Path_Logic](img/s2_floorplan.jpg)
+
+This phase introduced stricter physical isolation and Pblock-driven locality.
+
+Reported metrics from the original implementation log:
+
+- **WNS:** +0.708 ns
+- **WHS:** +0.024 ns
+- **Failing endpoints:** 0
+
+The important engineering point is not the number alone; it is what the number forced me to learn. Setup and hold must both survive after implementation. A path that is only “logically simple” is not accepted until the routed timing report proves it.
+
+### Stage 3: Full Pipeline Squeeze @ 322 MHz
 
 ![Timing_Summary](img/s3_timing.jpg)
 
 ![Clock_Tree](img/4ltigoriena_sim1.png)
 
-As the parsing logic scales, the timing window shrinks to its absolute physical limit.
-* **Timing Met**: **WNS** squeezed to **0.472 ns**, **WHS** at **0.030 ns**. 
-* **Logic**: 0 Failing Endpoints across 542 endpoints. This proves the deterministic stability of the manual routing pipeline. We are pushing the Ultrascale+ architecture to its extreme edge without violating setup/hold times. 
+As the parser grew, the timing window became more constrained. This phase established the habit of reading the implementation result as a physical object rather than treating synthesis as the final answer.
+
+Reported metrics from this stage:
+
+- **WNS:** +0.472 ns
+- **WHS:** +0.030 ns
+- **Failing endpoints:** 0 across 542 endpoints
+
+This stage also made clear that clock tree behavior, register placement, routing detours, and fanout cannot be discussed separately from RTL.
 
 ---
 
-### Proprietary Disclaimer
-**Do not ask for the XDC scripts.** The exact coordinates, `set_property LOC/BEL` mappings, and Phase Interpolator calibration values are proprietary and isolated in private labs. What you see here is the physical result; the manual routing logic behind it remains classified.
-### Phase 3 - Extreme RX-Parser-TX (Single Channel) Summary
+## 2026-04-29 — Phase 3 RX-Parser-TX Single-Channel Validation
 
-*Oops, sorry guys, I simply forgot to include these waveforms and schematics in yesterday's push. Here's the final validation of the deterministic single-channel pipeline before we scale up to the dual-path arbiter architecture.*
+### I. Latency Validation: Waveform Snapshot
 
-#### I. Latency Validation: Waveform Snapshot
-We are running `GTH Raw Mode` on the Ultrascale+ architecture, stripping away all non-essential protocol overhead (e.g., standard 802.3 buffers, PCS alignment primitives) for direct hardware parallel data access. 
 ![Physical_Mapping](img/enasim4x2_.png)
 
-## 2026-04-29 
-Phase 3 RX-Parser-TX single-channel validation and manual routing schematic update
+This phase explored the direct RX-to-parser timing model under GTH Raw Mode assumptions. The waveform evidence was used to study deterministic cycle behavior from Start-of-Packet detection into parser output signaling.
 
-* **Highlight:** The cursor measurements demonstrate deterministic, extreme low-cycle latency from Start-of-Packet (SoP) detection directly to the Parser Output pulse. 
+### II. Implementation Details: Synthesis Schematic
 
-#### II. Implementation Details: Synthesis Schematic
-This isn't generic RTL synthesis; this is **direct physical mapping**. We are manually configuring registers (`mock_gth_data_reg`) and logic gates to absolutely minimize interconnect routing delay at the silicon level.
 ![Manual_Routing](img/朽木冬子_5.png)
 
+The purpose of this schematic phase was to inspect whether RTL intent actually mapped to the expected primitive-level structure.
 
+Key physical concerns in this phase:
 
-* **Clock Tree:** `IBUFDS_GTE4` -> `BUFG_GT_SYNC`. Direct-driven reference clock path ensuring zero-latency clock enables across the 16nm die matrix.
-* **Matrix Mapping:** Direct-mapped parallel registers to output pins with aggressive LUT-1 combinational bypass elements. We do not waste clock cycles waiting to propagate simple data mappings.
+- FDRE ownership of data and valid signals
+- LUT depth on parser control paths
+- whether direct mappings remained local or became routed detours
+- whether debug/demo outputs distorted the fast-path structure
 
-#### III. Static Timing Report Summary
-As the parsing logic scales, the timing window shrinks to its absolute physical limit. The final synthesis proves deterministic stability under extreme constraint conditions.
+The early README used more aggressive language such as “direct physical mapping” and “zero-latency clock enables.” The corrected interpretation is stricter: a schematic can show topology, but only post-route timing and hardware measurement can prove timing and latency behavior.
 
-* **Timing Constraints**: **Met**
-* **Failing Endpoints**: **0** (Across all 542 endpoints)
-* **Worst Negative Slack (WNS)**: **0.472 ns** (Setup)
-* **Worst Hold Slack (WHS)**: **0.030 ns** (Hold)
+### III. Static Timing Report Summary
 
-> **Proprietary Disclaimer:** > **Do not ask for the XDC constraint scripts.** The exact `set_property LOC/BEL` coordinate mappings and Phase Interpolator calibration values are proprietary and isolated. What you see here is the physical result; the manual routing logic behind it remains classified.
+Reported metrics preserved from this stage:
+
+- **Timing constraints:** met
+- **Failing endpoints:** 0 across 542 endpoints
+- **WNS:** +0.472 ns
+- **WHS:** +0.030 ns
+
+The useful conclusion from this stage was that the physical path could be constrained into a timing-clean shape under the tested fabric model. It was not yet final board-level proof.
+
+### Proprietary Constraint Policy
+
+Detailed XDC/TCL constraints, exact coordinate mappings, LOC/BEL assignments, and physical placement strategy are not published in this repository. The public repository shows architecture, testbench direction, timing evidence, and development logs; the proprietary physical implementation scripts remain private.
+
+---
+
+## VU9P Matrix Scaling & SLR Isolation
+
 ### Stage NEW: VU9P Matrix Scaling & SLR Isolation
 
-Scaling the core engine to the **Virtex UltraScale+ VU9P** architecture. In this 16nm multi-die matrix, the physical dimension of the silicon becomes the primary latency bottleneck.
+Scaling the core engine to VU9P introduced a different physical enemy: die size and SLR boundary pressure.
 
-* **Timing Met**: **WNS (Worst Negative Slack)** secured at **2.011 ns**. **WHS (Worst Hold Slack)** locked at **0.159 ns**.
-* **Logic Analysis**: The baseline **Five-FF Stage** demonstrates deterministic stability at **322.56 MHz**. However, the **Net Delay** (0.760 ns) now significantly outweighs the **Logic Delay** (0.217 ns). This proves that interconnect routing, rather than gate switching, is the dominant factor in the **36ns** path.
-* **Physical Layer Isolation**: We implemented strict **Pblock** constraints to anchor the parsing logic within the same **SLR** (Super Logic Region) **SLL (Super Long Line)** cross-SLR penalty, which typically incurs a 1.5 ns - 2.2 ns overhead.
+Original reported metrics:
+
+- **WNS:** +2.011 ns
+- **WHS:** +0.159 ns
+- **Net Delay:** 0.760 ns
+- **Logic Delay:** 0.217 ns
+
+The key lesson was that interconnect dominated logic delay even more clearly in the larger device context. SLR placement is not a cosmetic floorplanning choice; crossing large physical regions can add nanosecond-scale penalty.
 
 ### Stage 2: High-Fanout Congestion Management & Routing Matrix Pressure
 
 ![Output_Waveform](img/tkyou_6.png)
 
-As the **OMD-C** parsing tree expands, **High Fanout** nodes (Fanout > 12) begin to strain the **Routing Matrix**. On a high-density device like the **VU9P**, even moderate fanout forces the router to bridge multiple **CLEM** tiles, leading to unpredictable timing skew.
+High-fanout controls such as `packet_valid`, `sof_detect`, parser enable, and arbitration select lines can become physical routing problems before they become logical problems.
 
-* **Metric**: **0 Failing Endpoints** across initial baseline paths.
-* **Fanout Governance**: 
-    * Any control signal (e.g., `packet_valid`, `sof_detect`) with a fanout exceeding 12 is flagged for manual **Register Replication**. 
-    * We prohibit the EDA tool from "lazy-routing" critical enable signals across the die. Instead, we force physical replicas of the **FF** to reside immediately adjacent to their target **LUT** clusters using `(* MAX_FANOUT = 12 *)` attributes.
-* **Strategic Buffer**: Maintaining a **2.011 ns** slack is not just for timing closure; it is a critical buffer for the upcoming **Order Book** parallel search logic. In the **VU9P** environment, **Fanout** is not a mere routing statistic—it is a direct threat to the **Zero Jitter** mandate.
-  ### Stage 2: High-Fanout Congestion Management & Routing Matrix Pressure
+Practical rule established in this phase:
+
+- fanout above roughly 12 on critical controls must be reviewed
+- register replication is preferred over allowing a global control net to drive a wide mux field
+- locality must be checked in the implemented design, not assumed from RTL hierarchy
+
 ![rooting](img/shio_7.png)
 
-
-
-As the **OMD-C** parsing tree expands, **High-Fanout** nodes (Fanout > 12) exert immense pressure on the **Routing Matrix**. In high-density devices like the **VU9P** or **ZU15EG**, even moderate fanout forces the router to bridge multiple **CLEM** tiles, leading to unpredictable **Timing Skew**.
-### True Technical Mastery: Derived from Absolute Control of the Physical Layer, Not Blind Adherence to Architectural Updates
-
-Many believe that newer chips or more complex architectures equate to higher technical skill—this is a pure amateur's delusion. Look at this **Manual Routing** on the **ZU15EG**; this is the ultimate dialogue between **FPGA** logic and the physical world.
-
-#### The Duel Between Logic Levels and Latency:
-In the **HFT** arena where every **nanosecond (ns)** counts, automated routing yields results that are merely "good enough to pass." I demand **Logic Level = 0**. The symmetry and direct-path routing shown here push the **Net Delay** to its absolute physical limit.
-
-#### Cross-Architectural Dominance:
-I previously stress-tested critical paths with a **Fanout** of 12 on the **VU9P (Virtex UltraScale+)**. Under such high-fanout pressure, standard automated tools inevitably trigger **Timing Violations** due to their inability to balance **Clock Skew** and **Data Path Delay**. Through deep intervention at the **Physical Layer**, I maintained absolute signal synchronization.
-
-#### The Truth of Architecture and Mastery:
-Whether it’s **UltraScale+** or the overhyped **Versal**, without a profound understanding of manual constraints, **Manual Placement**, and internal **Switchbox** hops, even the most powerful hardware is just wasting **Clock Cycles**.
-
-**True technical mastery does not reside in new architectures; it originates from total control over the low-level hardware.** While others are still figuring out how to "drag-and-drop" in the **Vitis** GUI, I am already on the silicon’s metal layers, using **TCL scripts** to precisely map the flight path of every single electron.
+This reinforced the rule that moderate fanout can become a timing problem when it forces the router to bridge distant CLEM/CLB regions.
 
 ---
 
-**This demonstrates that true engineering excellence is not derived from chasing the latest architecture, but from absolute mastery over the Physical Layer.** While automated black-box tools struggle with stochastic delays under **Routing Matrix** pressure, only precise control over physical hardware resources ensures dominance in the nanosecond-scale battlefield.
+## Physical-Layer Control Notes
 
-#### The Art on Silicon: A 0.009ns Ultimate Physical Seal
-Under the high-frequency heartbeat of **322.26MHz**, I saw through the automated tool's coordinate mapping illusions and successfully locked down the true physical port of entry for the **GTH** (**Clock Region X3Y4**). Through extreme **Pblock** constraints, precise **Register Replication**, and manual routing intervention, the core **U-turn** path of **SnowSakura** has secured epic physical metrics:
+### Manual Placement, Logic Levels, and Latency
 
+The historical README used phrases such as “absolute control,” “Logic Level = 0,” and “surgery on silicon.” The corrected engineering interpretation is:
 
-#### Absolute Mastery over the Physical Layer
-This period of extreme **Physical Layer** squeezing has allowed me to truly achieve absolute control over every metal routing trace and every internal **Switchbox**. The single-path, low-level foundation for handling the **HKEX OMD-C** protocol is now rock-solid.
+- A path with **0 reported logic levels** still has route delay, clock uncertainty, setup requirement, and hold requirement.
+- A direct-looking route in Device View must still be verified by `report_timing`.
+- Manual placement can reduce detours, but it can also create congestion if the Pblock is wrong or too tight.
+- Timing closure is a physical report, not a visual impression.
+
+### Art on Silicon / Routing Evidence
+
 ![new_art](img/utou_8.png)
 
 ![new_art](img/yuki_9.png)
 
-#### New Simulation
+These images are preserved as historical physical-layout evidence. The current way to interpret them is not as a standalone proof, but as part of a larger evidence chain: placement view, timing report, route delay, fanout report, and timing simulation.
+
+### New Simulation
+
 ![SIM](img/10sim2_1.png)
+
 ![SIM](img/11sim2_2.png)
-###  Technical Specification & Performance Edge
 
-* **Sub-Nanosecond OMD-C Gateway** — This repository hosts a high-performance OMD-C (Optimized Message Data-Cast) hardware parser and framer, engineered for sub-nanosecond precision in High-Frequency Trading (HFT) environments. By utilizing GTH Transceiver PMA/PCS Bypass (Raw Mode), this architecture achieves a deterministic U-turn latency that pushes the physical limits of the 16nm FinFET fabric.
-* **Zero-Wait Predictive Barrel Shifter** — Implements a combinatorial 128-to-64 bit sliding window to resolve bit-slip offsets in Raw Mode without adding a single clock cycle of latency.
-* **Parallel Preamble Sniffing** — Utilizes a high-speed pattern matching array to detect the SFD (0xD5) across all 8 byte-lanes simultaneously, ensuring immediate frame synchronization.
-* **CARRY8-Optimized Parsing** — Hardware-mapped 16-bit magnitude comparators for MsgType and MsgLen validation, achieving logic levels < 4 for maximum timing closure headroom.
-* **Deterministic Pipeline** — A strictly enforced 5-FF Stage path (4-cycle RX, 1-cycle TX) ensures zero-jitter response times, critical for competitive market data feedback loops.
+Simulation helped expose functional behavior and pipeline timing. The later project direction corrected an important limitation: simulation must distinguish functional parser success from GTH/Raw Mode/CDC physical proof.
 
-###  Hardcore Timing Metrics (Post-Implementation)
+---
 
-* **Worst Negative Slack (WNS): 0.511 ns** — Under the lethal 1.2ns cross-module deadline, I forcefully extracted an absolute margin of half a nanosecond.
-* **Logic Level = 0** — The signal launches from **RX** with zero logic gate attrition, driving straight into the **TX** core relying purely on bare **Copper Traces**.
-* **Worst Hold Slack (WHS): 0.009 ns** — A mere 9 picoseconds! This means our parsing logic has been relentlessly pinned at absolute zero distance to the physical pins, perfectly illustrating what "flying close to the ground" means in **HFT**.
-### Next Use python Test
+## Technical Specification & Performance Edge — Historical Summary
+
+The early public specification emphasized several aggressive ideas:
+
+- GTH PMA/PCS bypass exploration
+- 128-to-64 sliding-window experiments
+- parallel preamble/SFD sniffing
+- CARRY8-assisted validation logic
+- fixed-stage deterministic pipeline structure
+
+The corrected current interpretation is stricter:
+
+- A **sliding window** can be useful for testbench, bring-up, or reference experiments, but a runtime barrel shifter does not belong in the final steady-state RX fast path.
+- A **parallel preamble scanner** is useful during alignment, but it must not remain as a high-fanout steady-state scanner that loads the critical path.
+- **CARRY8** is useful only where its physical carry chain actually reduces delay and where post-route timing confirms it.
+- A deterministic pipeline must be counted in cycles and ns, not described only with slogans.
+
+### Hardcore Timing Metrics — Historical Post-Implementation Notes
+
+Preserved metrics from the original log:
+
+- **WNS:** +0.511 ns under a 1.2 ns cross-module deadline
+- **WHS:** +0.009 ns
+- **Reported Logic Level:** 0 on selected paths
+
+Correct interpretation:
+
+A 9 ps hold margin is not a marketing trophy; it is a warning that hold timing is flying close to the ground. It is valid only if the implemented timing report, clock uncertainty, min-delay analysis, and endpoint coverage are correct.
+
+### Next Python Test
+
 ![SIM](img/pythontest_1.png)
 
-### ### Major Milestone: IEEE 802.3 Framework Refactor & OMD-C Throughput Breakthrough
+---
 
-**Current Status: v0.7-Alpha (Refactored)**
+## 2026-05-15 — First Public Simulation Release
+
+### Major Milestone: IEEE 802.3 Framework Refactor & OMD-C Throughput Breakthrough
+
+**Current status at that time:** v0.7-Alpha Refactored
+
 ![Overview](img/over1.png)
+
 ![Python_Sim_1](img/pythonsim2.png)
+
 ![Python_Sim_2](img/pythonsim2_2.png)
 
+At this point the project moved from isolated timing experiments toward a more complete IEEE 802.3 / OMD-C simulation framework.
 
+Historical result preserved from the original log:
 
+- packet capture improved from roughly 10% to **71.3%**
+- test data and testbench direction began moving toward public reproducibility
+- the framework started exposing real parser-state and packet-validity issues
 
-* **Architectural Overhaul** – Completely re-engineered the underlying **IEEE 802.3** framework to eliminate vendor-specific IP overhead. By transitioning to a custom high-performance physical layer, the packet capture stability has surged from a baseline of **10%** to a robust **71.3%** (**7,131/10,000** packets) under peak simulation load.
-* **Physical Layer Precision** – Achieved stable **HKEX OMD-C v1.45** binary parsing at a line speed of **322.56MHz**. This refactor optimizes the **GTH Raw Mode** data path, ensuring significantly tighter alignment and reduced jitter during high-density bursts.
-* **Special Acknowledgments** – I would like to extend my deepest gratitude to **Frank Bruno**. His invaluable insights and technical guidance on high-speed serial interfaces were the catalyst for this breakthrough. Without his mentorship, reaching the **7,000+** packet milestone in this timeframe would not have been possible.
+Special acknowledgement preserved:
 
-## 2026-05-15 
-First simulation release with public tb_omdc_top.v and raw_data.hex stress-test dataset
+Frank Bruno’s high-speed serial-interface insights were an important external influence during this phase.
 
-### ### Next Steps
+### Next Steps From This Phase
 
-* **Gate-Level Delta Mapping** – Currently mapping the remaining **28.6%** loss at the gate level.
-* **FSM Optimization** – Focused on perfecting the **FSM** state-transition logic within the newly refactored framework to achieve a **Zero-Loss (0%)** production-ready state for the **15EG** platform.
+The immediate target after this release was to map the remaining loss mechanism and correct the FSM / packet-validity handling without adding latency.
 
-##  Update: Cracking the 9,900+ Barrier & Public Stress Test Release
+---
 
-Following the initial breakthrough, I’ve pushed the **SnowSakura-FPGA** architecture even further. We aren't just talking about functional simulation anymore; we are talking about **Physical Layer Survival**.
+## Update: Cracking the 9,900+ Barrier & Public Stress Test Release
 
-I have officially achieved **9,974/10,202** packet captures (97.8% success rate) under extreme physical constraints. To the community and fellow HFT architects: **The Testbench and Raw Data are now public.** If you think your parser can handle the heat of a real-world HKEX line, feel free to clone and run the simulation yourself.
+The next public stress-test milestone achieved:
+
+- **9,974 / 10,202** packet captures
+- approximately **97.8%** success rate under the then-current simulation assumptions
+- public stress test using `tb_omdc_top.v` and `raw_data.hex`
 
 ![Vivado_Sim_1](img/12sim3_.png)
 
-###  What’s inside the Stress Test? (Why most parsers will fail)
+### What Was Inside the Stress Test
 
-This isn't your typical "ideal world" simulation. To replicate the brutal environment of the **HKEX OMD-C** feed at a **322.56 MHz** line speed, I’ve injected real-world physical distortions into the `tb_omdc_top.v`:
+The testbench attempted to model harsher physical-layer conditions than an ideal single-clock parser test:
 
-*   **Clock Skew & 25 PPM Offset**: In reality, the exchange's clock and your local oscillator are never in perfect sync. I’ve introduced a **25 PPM** frequency offset to test if your architecture can handle "clock drift" without a standard Elastic Buffer.
-*   **6.0 ps RMS Random Jitter**: We are simulating the **GTH PMA** recovered clock noise. This jitter will ruthlessly attack your **Setup/Hold windows**. If your **Triple-FF** synchronization or **CDC** logic isn't physically constrained (TCL-locked), your FSM will flip.
-*   **Sub-nanosecond Phase Shifts**: The data injection is randomized to hit the clock edges at the worst possible moments, testing the absolute limits of metastability recovery.
-*   **Raw Mode Data Stream**: Using the provided `raw_data.hex`, the test forces you to deal with raw bitstreams directly from the transceiver, bypassing vendor-specific IP "black boxes" to achieve the **36ns-37ns** latency boundary.
+- clock skew / ppm offset concept
+- random jitter injection at ps-scale simulation resolution
+- sub-ns phase perturbation experiments
+- raw-data stream ingestion through the simulation framework
+
+Correct current interpretation:
+
+This was a useful stress simulation, not a replacement for GTH board-level proof. It proved that the parser framework was improving, but the final evidence still requires post-route timing, real transceiver configuration, SFP loopback, Eye Scan, and BER measurement.
 
 ![Vivado_Sim_2](img/13sim3_2.png)
 
-### The Goal: The Final 2.2%
+### The Final 2.2%
 
-Currently, the **Five-FF** stage architecture handles **97.8%** of the burst under these conditions. The remaining **228 packets** are the final frontier—a battle against the laws of physics at **3.1ns** cycles. 
-
-**Think your FSM can do better?**
-1.  Clone the `/sim` folder.
-2.  Point the `$readmemh` in `tb_omdc_top.v` to the provided `raw_data.hex`.
-3.  Set your simulation timescale to `1ps / 1fs` and run.
-
-If you can hit **100% zero-loss** without adding more than **37ns** of wire-to-wire latency, let’s talk.
+At this time the remaining loss was treated as the final frontier of the simulated RX/parser system.
 
 ![Vivado_Sim_3](img/14sim3_3.png)
 
-###  Repository Structure (Simulation)
-- `/sim/tb_omdc_top.v` : The high-precision physical layer testbench.
-- `/sim/raw_data.hex` : 100,00lines of OMD-C raw binary stream.
-### The "Zero-Detour" ManifestoThe "Zero-Detour" Manifesto
-Look at these Metal Layers. 
-Most people let the tool 'optimize' their paths, resulting in a messy 'Z' or 'S' shape that introduces uncontrollable Jitter. 
-**I don't.**
+### Repository Structure — Simulation
+
+```text
+/sim/tb_omdc_top.v   : high-precision physical-layer testbench
+/sim/raw_data.hex    : HKEX OMD-C raw binary stream test dataset
+```
+
+---
+
+## Zero-Detour Manifesto — Routing Geometry Notes
+
+The original Zero-Detour section focused on direct routing geometry and the desire to eliminate unnecessary detours.
+
+Corrected technical meaning:
+
+- Short Manhattan distance can reduce route delay.
+- Fewer switchbox hops can reduce uncertainty and skew.
+- But route shape must still be validated through implemented timing reports.
+- A clean visual route is not automatically a valid 36–37 ns system proof.
+
 ![Vivado_routing1](img/routing1.png)
 
-
-
-This is a Hardened Physical Path crossing multiple Clock Regions with the absolute Minimal Manhattan Distance. 
-By manually locking the Interconnect Tiles and Switch Matrices via TCL, 
-I’ve eliminated every unnecessary Via and Detour.
 ![Vivado_routing2](img/routing2.png)
 
+This section is preserved because physical geometry is central to the project. The wording is tightened so that the claim is tied to verifiable implementation evidence rather than visual confidence alone.
 
-We’re talking about Sub-nanosecond Propagation Delay across the entire Die. 
-In the high-speed domain, this level of Skew control is what defines a deterministic system. 
-I’m not just writing Verilog; I’m performing Surgery on Silicon.
+---
 
-This isn't a routing result; 
-it's a Physical Geometry enforced on the **ZU15EG** fabric. Every Metal Point is exactly where it must be to maintain the 322.56 MHz phase integrity.
+## 2026-05-18 — 100% Zero-Loss Simulation Completion
 
-## 2026-05-18
-100% zero-loss completion and Phase 1 pre-university milestone
+This milestone marked completion of the first major pre-university simulation target.
 
-BREAKING: 100% Zero-Loss Achieved Under Extreme Physical Layer Distortions
+Historical result preserved:
 
-We have officially conquered the final frontier. The remaining 228 packets—previously lost to the brutal laws of physics under raw line-rate stress—have been completely captured. 
-
-By hard-coding a deterministic physical-layer synchronization mechanism and enforcing absolute spatial isolation via floorplanning, the SnowSakura-FPGA engine has achieved **100% zero-loss packet ingestion (10,000/10,000)** across the entire HKEX OMD-C raw binary stream. 
-
-All of this was accomplished without adding a single cycle of pipeline latency, keeping our wire-to-wire budget strictly locked at **36ns**.
+- **10,000 / 10,000** packet ingestion in the test stream
+- no added pipeline cycle in that simulation architecture
+- wire-to-wire budget still framed around the 36 ns-class target
 
 ![tcl](img/tclover2.png)
 
+### Simulation Report — Vivado XSim
 
-### The Simulation Report (Vivado XSim)
+The historical note said: “Only 1 logic level.”  
+The corrected interpretation is: selected paths showed very low logic depth in the tested netlist, but final acceptance still requires routed timing, endpoint coverage, high-fanout review, and hardware measurement.
 
-Only 1 logic level its snow fpga always
-### How the Final 2.2% Was Won (Physical Layer Breakdown)
+### How the Final Loss Was Removed — Physical-Layer Breakdown
 
-1. **Eliminating CDC Metastability Without Latency Penalties**
-   Instead of falling back on standard, high-latency elastic buffers that ruin the latency budget, the alignment logic was redesigned to exploit the deterministic phase relationships of the **GTH PMA** recovered clock. The tracking state machine now resolves raw word alignment within the sub-nanosecond windows dictated by the **25 PPM frequency offset**.
+1. **CDC / phase handling discipline**  
+   The design moved away from relying on generic elastic buffering and toward deterministic phase/alignment ownership. Current rule: multi-bit payload CDC cannot be “fixed” by Triple-FF; only 1-bit status/control synchronization can use Triple-FF safely. Payload must be same-domain, phase-related, or explicitly normalized.
 
-2. **Strict Combinational Logic Gating (< 2 Levels)**
-   The critical path from `gt_rx_data_out[63:0]` to `parsed_msg_valid` was mercilessly flattened. By strictly restricting the asynchronous clock domain crossing to a manual **Triple-FF synchronization** structure with less than two levels of combinational logic, we prevented any multi-bit skew from tearing the data vectors apart.
+2. **Combinational logic gating discipline**  
+   Critical paths were flattened and reviewed for logic-level count. Current rule: <=2 LUT layers in the GTH RX Data Path is the design limit, and it must be verified after implementation.
 
-3. **Vivado TCL-Locked Floorplanning & Timing Closure**
-   As shown in the hardware layout, the entire `u_omdc_top` core has been tightly constrained into a dedicated **PBLOCK** right adjacent to the transceiver columns. 
-   * **Operating Frequency:** 322.56 MHz (3.1ns clock cycle)
-   * **Worst Negative Slack (WNS):** +0.593 ns setup slack remaining on the most critical control paths (`u_rx...sg_valid_reg/C` to `u_tx...state_reg[1]/CE`). 
-   * **Total Logic Delay:** Slashed down to a mere **0.176 ns**, ensuring the design easily survives real-world clock distribution jitter.
+3. **TCL-locked floorplanning and timing closure**  
+   Pblocks and physical constraints were used to keep the fast path local. Current rule: XDC/TCL constraints are part of the design, and missing endpoints should fail loudly rather than silently falling back.
 
-4.  **I have translated the comments and refactored my testbench; it's ready for testing whenever needed**
+Preserved reported metric from this phase:
 
+- **WNS:** +0.593 ns on critical control paths in the tested implementation
+- **Total Logic Delay:** approximately 0.176 ns on selected paths
 
 ![device](img/device1.png)
 
 ![pysim3](img/pysim3.png)
 
-##  Phase 1 Complete: Pre-University Milestone Achieved
+---
 
-As of today, all architectural objectives set for my pre-university phase have been flawlessly executed. The single-path parser is officially locked at 100% zero-loss under real-world line distortions.
+## Phase 1 Complete — Pre-University Milestone
 
-This will be the final major update before university starts. The repository is now entering a strategic stabilization and deep-refinement phase.
+As of the May 18 milestone, the single-path parser had reached the first public simulation target under the available test environment.
+
+The corrected current framing is:
+
+- This was a major simulation and post-route learning milestone.
+- It was not the end of validation.
+- The next proof layer is real ZU15EG + SFP hardware validation.
 
 ---
 
-##  The Next Frontier: Dual-Path Line A/B Arbitration & Retransmission
+## Next Frontier — Dual-Path Line A/B Arbitration & Recovery
 
-The next step is where the architecture faces true hardware-level complexity: handling the HKEX OMD-C Dual-Path (`Line A` and `Line B`) feed over 10G Ethernet. 
+HKEX OMD-C dual multicast lines introduce a different problem from physical RX alignment. Packet loss, duplicate packets, delayed packets, and gap recovery are network/protocol-layer concerns and must not be confused with Ethernet bit/block/byte alignment.
 
-In real-world production trading, packets can be dropped or delayed on either line due to network jitter. To achieve absolute resilience, the engine must ingest both paths simultaneously, arbitrate the first-arriving valid packet, and maintain state for gap detection—all without blowing the latency budget.
+The next architecture layer must ingest both Line A and Line B, choose the first valid packet, mask duplicates, detect gaps, and prepare a recovery signal without blowing the latency budget.
 
-### The 2-Cycle Challenge
-My architectural constraint for Dual-Path Arbitration and Retransmission logic is strictly locked at **2 clock cycles (6.2 ns @ 322.56 MHz)**. 
+### The 2-Cycle Arbitration Challenge
 
-This is not a simple state machine job. Within these 2 cycles, the RTL must:
-1. **Decode & Compare:** Parse the sequence numbers of both paths incoming from the asynchronous CDC boundaries.
-2. **Arbitrate:** Route the first-arriving packet to the downstream parser while masking the duplicate packet from the redundant line.
-3. **Trigger Retransmission Request (Ouch):** Detect gaps in sequence numbers and immediately flag a retransmission trigger to the TCP/IP recovery module.
+The dual-path arbitration budget is currently framed as **2 cycles** at 322.56 MHz, or about **6.2 ns**.
 
-Executing multi-bit sequence comparison, dual-path multiplexing, and error-flag generation within a 2-cycle physical budget means there is zero room for heavy combinational logic. Every path must be meticulously balanced across individual registers to prevent **Setup/Hold time** violations.
+Within that physical budget, the design must avoid:
+
+- full 32-bit sequence comparison inside the final mux cycle
+- wide if/else priority structures
+- unreplicated select signals driving 64-bit or 96-bit muxes
+- global high-fanout control nets
+
+The intended direction is a **chunked replicated one-hot arbiter**:
+
+- precompute eligibility before the final arbitration cycle
+- replicate local controls by payload chunk
+- use one-hot AND-OR muxing instead of wide priority muxing
+- keep `out_valid` / TX release control separate from payload chunk selection
+- verify that replication survives synthesis and implementation
 
 ---
-## 2026 6.24
 
-
-
-## Final Architecture Update
+## 2026 6.24 — Final Architecture Update
 
 The final single-channel architecture has now been defined as a fixed-cycle pipeline:
 
-* **3 cycles** for RX normalization
-* **1 cycle** for parser extraction
-* **2 cycles** for arbitration
-* **1 cycle** for TX release
-* plus an explicitly budgeted **18 ns PMA latency** under the GTH Raw Mode / RX-TX Buffer Bypass path
+- **3 cycles** for RX normalization
+- **1 cycle** for parser extraction
+- **2 cycles** for arbitration
+- **1 cycle** for TX release
+- plus an explicitly budgeted **18 ns PMA latency** under the GTH Raw Mode / RX-TX Buffer Bypass path
 
-This architecture has been validated through strict post-route SDF timing simulation on the FPGA fabric side, with the PMA latency budget treated as part of the final wire-to-wire target. I have also replaced the earlier testbench with a much stricter verification setup. Looking back, the old testbench clearly had major limitations, especially in how it modeled physical-layer behavior and packet validity.
+This architecture has been validated through stricter FPGA-fabric-side post-route SDF timing simulation, while PMA latency is treated as part of the final wire-to-wire budget instead of being hidden inside a vague latency claim.
 
-Compared with what I believed at the beginning of 2026, the gap is enormous. My understanding of the physical layer has changed significantly. I no longer describe the design with vague claims such as “zero jitter.” Instead, the next validation focus is much more concrete: **BER measurement, Eye Scan results, and SFP loopback testing**.
+The old testbench was also replaced with a stricter verification setup. Looking back, the earlier testbench had major limitations, especially in how it modeled physical-layer behavior, packet validity, and RX ownership.
 
-In addition, my original plan to purchase the ZU15EG board during my sophomore year has now been moved forward to July. Around mid-July, I expect to attach real SFP hardware and the actual ZU15EG platform to this project.
+Compared with the beginning of 2026, the architecture has changed significantly:
 
-I have also updated the repository timestamps. Looking back at this repository, I feel genuinely reflective: at the beginning of 2026, I was still learning logic gates—not even full gate-level circuit design yet. To reach this point during a gap year, starting from that level, has been a significant personal milestone.
+- earlier wording overused “zero jitter”
+- the current proof plan emphasizes BER, Eye Scan, and SFP loopback
+- historical screenshots are now treated as development evidence, not final hardware proof
+- the repository has become a record of the physical-layer learning curve, not only a timing-screenshot showcase
 
-This repository is no longer just a collection of timing screenshots. It is the record of a full physical-layer learning curve: from basic logic-gate thinking at the beginning of 2026 to a fixed-cycle GTH Raw Mode architecture with post-route timing evidence, stricter simulation, and an upcoming real ZU15EG + SFP hardware validation phase.
+The ZU15EG board purchase plan has moved forward to July, with real SFP hardware validation expected after that.
+
+---
+
+## Evidence Checklist
+
+Current and upcoming evidence layers:
+
+- [x] RTL architecture iterations
+- [x] functional simulation
+- [x] stress-test dataset flow
+- [x] post-route timing reports on tested fabric-side builds
+- [x] SDF timing simulation flow
+- [ ] ZU15EG board bring-up
+- [ ] SFP loopback
+- [ ] Eye Scan
+- [ ] BER measurement
+- [ ] long-duration error-free hardware run
+- [ ] dual-path Line A/B arbitration validation
+
+---
+
+## Public / Private Boundary
+
+Public repository:
+
+- architecture notes
+- high-level RTL and simulation artifacts
+- selected timing screenshots
+- stress-test direction
+- development log
+
+Private lab:
+
+- exact XDC/TCL placement strategy
+- exact Pblock coordinates
+- LOC/BEL mappings
+- phase/alignment calibration scripts
+- proprietary implementation constraints
+
+Do not ask for the private XDC scripts. The public repository is intended to show the engineering direction and evidence chain; the physical implementation strategy remains private.
+
+---
+
+## Collaboration
+
+If you want to challenge the architecture, discuss timing paths, review the physical assumptions, or collaborate around FPGA-based HFT infrastructure, contact:
+
+**Email:** `ruansheng333@gmail.com`
+
+SnowSakura is not a polished institutional project. It is an aggressive physical-layer engineering record built through direct iteration, timing evidence, and continued hardware validation.
 
