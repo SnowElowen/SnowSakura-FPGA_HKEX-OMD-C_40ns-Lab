@@ -532,6 +532,7 @@ To build a deterministic ultra-low-latency FPGA path for HKEX OMD-C market data,
 SnowSakura-FPGA is no longer just an RTL plan.
 
 It is now moving onto real hardware.
+![FPGA](img/FPGA.jpg)
 
 ## Public / Private Boundary
 
