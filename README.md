@@ -506,6 +506,33 @@ Current and upcoming evidence layers:
 
 ---
 
+## 2026-07-03 — SnowSakura Enters Real Hardware Phase
+
+Today I officially ordered the ZU15EG development board and the required 10G optical test setup for SnowSakura-FPGA.
+
+This marks the transition from architecture-level design to real silicon validation.
+
+Until now, the project has mainly focused on RTL structure, GTH latency modeling, XDC constraints, post-route timing strategy, and OMD-C fast-path architecture.
+
+From this point forward, the project will move toward real hardware experiments:
+
+- ZU15EG board bring-up
+- GTH physical-layer validation
+- PRBS31 and BER testing
+- Eye Scan analysis
+- Raw Mode and Buffer Bypass validation
+- Manual RXSLIDE alignment
+- Post-route STA and timing simulation
+- Single-lane low-latency market-data path validation
+
+The long-term goal remains clear:
+
+To build a deterministic ultra-low-latency FPGA path for HKEX OMD-C market data, with all claims backed by physical evidence from real hardware, not only simulation.
+
+SnowSakura-FPGA is no longer just an RTL plan.
+
+It is now moving onto real hardware.
+
 ## Public / Private Boundary
 
 Public repository:
