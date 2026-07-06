@@ -539,11 +539,15 @@ It is now moving onto real hardware.
 
 Architecture Update: RX Buffer ON Bring-up Baseline
 
-SnowSakura-FPGA now separates the GTH receive architecture into two validation paths:
+During extended ZU15EG board bring-up and GTH receive-path stress testing, SnowSakura-FPGA exposed a key physical-layer reliability issue: the RX Buffer Bypass path is very sensitive to clocking, phase alignment, RXUSRCLK2 / RXPROGDIVCLK setup, buffer-bypass status, and post-route timing conditions.
+
+In a live market-data path, even a rare dropped packet or unstable receive boundary is unacceptable. A low-latency design must first be correct and stable before latency is removed further.
+
+Based on this result, the current SnowSakura-FPGA architecture is separated into two validation paths.
 
 1. RX Buffer ON — Stable Bring-up Baseline
 
-This path is used for initial ZU15EG board validation.
+This path is used for the first ZU15EG hardware baseline.
 
 Goals:
 
@@ -554,8 +558,9 @@ Goals:
 * Fixed-slice OMD-C parser correctness
 * Post-synthesis / post-implementation timing reports
 * Real bitstream evidence on hardware
+* Total latency target controlled within 60 ns
 
-This path prioritizes deterministic project bring-up and board-level proof before removing every possible GT latency source.
+This path prioritizes stable board-level proof and packet correctness before removing every possible GT latency source.
 
 2. RX Buffer Bypass — Deterministic Low-Latency Target Path
 
@@ -573,12 +578,11 @@ Goals:
 
 Design Intent
 
-RX Buffer ON is not a retreat from the low-latency target. It is the stable hardware baseline. RX Buffer Bypass remains the final deterministic low-latency blade and will be re-enabled after the board-level GTH link, parser flow, and timing environment are proven cleanly.
+RX Buffer ON is not a retreat from the low-latency target. It is the stable hardware baseline selected after board-level receive-path stress testing.
 
-The project direction remains unchanged: GTH physical-layer control, FPGA market-data parsing, HKEX OMD-C fixed-slice parser architecture, timing closure, and hardware evidence.
+RX Buffer Bypass remains the final deterministic low-latency blade and will be re-enabled after the GTH link, parser flow, clocking environment, and timing reports are proven cleanly.
 
-
-
+The project direction remains unchanged: GTH physical-layer control, FPGA market-data parsing, HKEX OMD-C fixed-slice parser architecture, timing closure, packet correctness, and hardware evidence.
 
 
 ## Public / Private Boundary
@@ -591,7 +595,7 @@ Public repository:
 - development log
 
 Private lab:
-—Rawmode bypassstx Rtl
+— Rawmode Rtl
 - exact XDC/TCL placement strategy
 - exact Pblock coordinates
 - LOC/BEL mappings
