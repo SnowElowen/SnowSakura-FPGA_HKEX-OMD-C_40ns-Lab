@@ -534,6 +534,53 @@ SnowSakura-FPGA is no longer just an RTL plan.
 It is now moving onto real hardware.
 ![FPGA](img/FPGA.jpg)
 
+
+## 2026 7.7
+
+Architecture Update: RX Buffer ON Bring-up Baseline
+
+SnowSakura-FPGA now separates the GTH receive architecture into two validation paths:
+
+1. RX Buffer ON — Stable Bring-up Baseline
+
+This path is used for initial ZU15EG board validation.
+
+Goals:
+
+* Stable SFP/GTH link
+* Clean RX data capture
+* Pattern checker / pattern_match_sticky
+* Fixed OMD-C ROM packet validation
+* Fixed-slice OMD-C parser correctness
+* Post-synthesis / post-implementation timing reports
+* Real bitstream evidence on hardware
+
+This path prioritizes deterministic project bring-up and board-level proof before removing every possible GT latency source.
+
+2. RX Buffer Bypass — Deterministic Low-Latency Target Path
+
+This remains the final ultra-low-latency target path.
+
+Goals:
+
+* RX Buffer Bypass
+* Manual alignment
+* Clean RXUSRCLK2 / RXPROGDIVCLK clocking
+* Buffer bypass done/error validation
+* Phase-related timing proof
+* Post-route STA and timing simulation
+* Final 36–37 ns deterministic latency target
+
+Design Intent
+
+RX Buffer ON is not a retreat from the low-latency target. It is the stable hardware baseline. RX Buffer Bypass remains the final deterministic low-latency blade and will be re-enabled after the board-level GTH link, parser flow, and timing environment are proven cleanly.
+
+The project direction remains unchanged: GTH physical-layer control, FPGA market-data parsing, HKEX OMD-C fixed-slice parser architecture, timing closure, and hardware evidence.
+
+
+
+
+
 ## Public / Private Boundary
 
 Public repository:
@@ -544,7 +591,7 @@ Public repository:
 - development log
 
 Private lab:
-—Rawmode bypasss Rtl
+—Rawmode bypassstx Rtl
 - exact XDC/TCL placement strategy
 - exact Pblock coordinates
 - LOC/BEL mappings
