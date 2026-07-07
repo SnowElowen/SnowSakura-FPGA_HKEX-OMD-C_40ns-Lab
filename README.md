@@ -8,7 +8,7 @@ The project now has **two clearly separated architecture tracks**:
 
 | Version | Architecture track | Transceiver mode | Delivery status | Latency target | Meaning |
 |---:|---|---|---|---:|---|
-| **Version 1** | Deterministic Low-Latency Research Blade | **GTH Raw Mode / RX-TX Buffer Bypass** | Research / advanced validation path | **36–37 ns class** | The original extreme latency target. It keeps RX Buffer Bypass and manual alignment as the final deterministic blade, but it requires stricter clocking, phase alignment, post-route proof, and board-level stability evidence before it can be treated as a deliverable. |
+| **Version 1** | Deterministic Low-Latency Research Blade | **GTH Raw Mode / RX-TX Buffer Bypass** | Research / advanced validation path | **40ns class** | The original extreme latency target. It keeps RX Buffer Bypass and manual alignment as the final deterministic blade, but it requires stricter clocking, phase alignment, post-route proof, and board-level stability evidence before it can be treated as a deliverable. |
 | **Version 2** | Stable Hardware Delivery Baseline | **GTH Raw Mode / RX Buffer ON / TX Buffer Bypass** | Current active deliverable path | **sub-60 ns measured target** | This is not because the RX Buffer Bypass path cannot be built. It is a deliberate engineering delivery decision after ZU15EG bring-up, ILA probing, Eye Scan direction, and receive-path stress testing showed that packet correctness and stable board evidence must come before removing every possible GT latency source. |
 
 **Current active repository direction:** **Version 2 first, Version 1 continues as the deterministic research blade.**
@@ -630,7 +630,7 @@ Goals:
 - buffer bypass done/error validation
 - phase-related timing proof
 - post-route STA and timing simulation
-- final 36–37 ns deterministic latency target
+- final 40ns deterministic latency target
 
 ### Design Intent
 
