@@ -68,6 +68,90 @@ The current verification direction is stricter than the earlier README language.
 
 ---
 
+## Custom HKEX OMD-C Exchange Feed Simulator — Hardware Test Platform
+
+To validate the real ZU15EG receive path without depending on an external exchange feed, I am building a deterministic **HKEX OMD-C Exchange Feed Simulator** directly around the SnowSakura hardware platform.
+
+This is not a software packet replay and it is not presented as a recreation of the full HKEX exchange network. It is a controlled FPGA-side feed source designed to generate repeatable OMD-C traffic, send it through the actual SFP/GTH path, receive it back through the hardware datapath, and expose each physical boundary before parser results are accepted.
+
+### Test Architecture
+
+| Block | Physical role | Verification output |
+|---|---|---|
+| `omdc_packet_rom` | Stores a deterministic HKEX OMD-C test payload as fixed bytes | Known byte-for-byte reference frame |
+| `tx_feed_fsm` | Releases the stored frame in a controlled sequence in the TX user-clock domain | TX word index, frame start, frame completion |
+| GTH TX / SFP path | Transmits through the real 10.3125 Gb/s serial path with TX Buffer Bypass | TX reset status, TX user clock, serial output |
+| Optical loopback / board connection | Returns the generated stream to the selected SFP RX lane | Real board-level signal path |
+| GTH RX Buffer ON | Establishes the current stable receive baseline before further latency removal | `rx_reset_done`, CDR state, RX user clock, stable RX words |
+| RX capture / checker | Captures RX words into FDREs and checks stream movement before protocol parsing | raw RX activity, `pattern_match_sticky`, mismatch counters |
+| Fixed-slice OMD-C parser | Extracts fixed protocol fields only after the RX stream and frame boundary are proven | `payload_start`, `rx_payload_idx`, `rx_frame_done`, `msg_type_r` |
+
+The intended hardware chain is:
+
+```text
+Fixed OMD-C ROM
+      -> TX Feed FSM
+      -> GTH TX / SFP
+      -> Optical or board loopback
+      -> GTH RX Buffer ON
+      -> RX Capture / Pattern Checker
+      -> Fixed OMD-C Parser
+```
+
+### Deterministic Level-1 OMD-C Frame
+
+The first protocol-level test vector is deliberately small and fixed:
+
+| Region | Size | Purpose |
+|---|---:|---|
+| OMD-C Packet Header | 16 bytes | `PktSize`, `MsgCount`, `SeqNum`, and `SendTime` |
+| Add Order message | 32 bytes | Fixed FullTick Add Order with `MsgType = 30` |
+| Total OMD-C payload | 48 bytes | One complete packet with one complete message |
+
+OMD-C integer fields are Little-Endian. Therefore `MsgType = 30` is transmitted in the byte stream as `1E 00`, while the fixed-slice parser must reconstruct it as `16'h001E`.
+
+The staged test plan is:
+
+1. **Level 0 — GT link and training pattern:** prove clocks, resets, CDR state, TX-to-RX data movement, and checker behavior.
+2. **Level 1 — Fixed 48-byte OMD-C payload:** prove deterministic ROM transmission, packet progression, and `MsgType = 30` extraction.
+3. **Level 2 — Ethernet / IPv4 / UDP framing:** add preamble, SFD, headers, FCS, and IFG only after the fixed OMD-C payload path is proven.
+4. **Measurement stage:** record post-route timing, board-level latency, Eye Scan direction, BER, and long-duration error counters.
+
+### Current ZU15EG Hardware Evidence — 2026-07-11
+
+The simulator work has already produced reusable hardware infrastructure rather than a disposable testbench:
+
+- the Puzhi ZU15EG board pinout, PL clock, LEDs, SFP disable controls, and GTH lane mapping have been incorporated into the active hardware project
+- the external top-level shell owns GT Wizard integration, resets, TX generation, RX capture, status reporting, and ILA visibility
+- fresh bitstream programming and matching ILA probe refresh have been proven
+- fabric probes now expose `link_debug_16`, `rx_data_sfp2_r`, `payload_start`, `rx_payload_idx`, `rx_frame_done`, `msg_type_r`, and `msgtype_30_seen`
+- internal probes expose per-channel `GTHE4_CHANNEL_GTRXRESET` and `GTHE4_CHANNEL_GTTXRESET`
+
+The present hardware boundary is intentionally reported without hiding uncertainty:
+
+- the observed hexadecimal `A301` value belongs to the composed `link_debug_16` status bus; it is not RX payload data and it is not an OMD-C `MsgType`
+- both observed GTH channels have not yet completed GT initialization
+- the fault is therefore upstream of the OMD-C frame FSM and fixed-slice parser
+- the shared `GTHE4_COMMON/QPLL0`, reset helper, freerun clock, and user-clock helper dependency chain must be proven before parser RTL is changed
+- the exact root cause has not yet been proven, so the repository does not claim that MGTREFCLK or QPLL0 is definitively at fault
+
+### Acceptance Order
+
+The hardware test is accepted only in this order:
+
+1. exact bitstream and matching ILA probe set
+2. `gtpowergood`, QPLL status, TX/RX reset completion, CDR state, and PMA/reset-helper completion
+3. observable `txusrclk2` and `rxusrclk2` counters with frequencies verified by `report_clocks`
+4. changing raw RX words on the intended physical lane
+5. training-pattern or deterministic frame match
+6. `payload_start`, payload index progression, and frame completion
+7. Little-Endian reconstruction of `MsgType = 16'h001E`
+8. fixed-slice parser output, post-route STA, timing simulation, BER, and measured latency
+
+This simulator is the bridge between earlier RTL/post-route evidence and a reproducible hardware-facing HKEX OMD-C demonstration. It prevents a protocol parser from being declared successful while the physical GT stream, clock tree, reset chain, or lane path remains unproven.
+
+---
+
 ## What SnowSakura Is
 
 SnowSakura-FPGA is a physical-layer FPGA research and implementation project for ultra-low-latency HKEX OMD-C ingestion. The project focuses on the boundary where protocol parsing, timing closure, transceiver behavior, clocking, and physical routing interact.
