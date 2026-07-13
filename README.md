@@ -23,7 +23,7 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ## Contents
 
-- [Current Hardware Status](#current-hardware-status--2026-07-11)
+- [Current Hardware Status](#current-hardware-status--2026-07-13)
 - [Immediate Hardware Checklist](#immediate-hardware-checklist)
 - [HKEX OMD-C Exchange Feed Simulator](#hkex-omd-c-exchange-feed-simulator)
 - [Architecture Tracks](#architecture-tracks)
@@ -35,39 +35,41 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ---
 
-## Current Hardware Status — 2026-07-11
+## Current Hardware Status — 2026-07-13
 
-SnowSakura has moved from simulation-only development into real Puzhi ZU15EG + SFP/GTH bring-up. The current debug boundary is still inside GT initialization; the OMD-C parser is not yet the failing block.
+SnowSakura has moved from a reset-blocked GTH state to the final receive-lock boundary on the real Puzhi ZU15EG + SFP/GTH setup. The current hardware evidence isolates the remaining blocker to RX CDR stability on the optical receive path; the OMD-C parser is not the failing block.
 
 ### Proven infrastructure
 
 - Puzhi ZU15EG device, PL clock, LED, SFP disable, GTH lane, and MGT reference-clock mappings are incorporated into the active project.
 - The reusable external top owns GT Wizard integration, reset sequencing, TX generation, RX capture, status reporting, and ILA visibility.
 - Exact bitstream programming and matching ILA probe refresh have been demonstrated.
-- Fabric-level probes expose `link_debug_16`, `rx_data_sfp2_r`, `payload_start`, `rx_payload_idx`, `rx_frame_done`, `msg_type_r`, and `msgtype_30_seen`.
-- Internal probes expose per-channel `GTHE4_CHANNEL_GTRXRESET` and `GTHE4_CHANNEL_GTTXRESET`.
+- A continuous MGT reference-clock source has been verified at the selected hardware boundary.
+- The corrected integration routes cleanly and produces a hardware-programmable bitstream.
+- Live ILA evidence shows PMA initialization and the tracked TX-side divider/bypass conditions have completed.
 
-### Present observation
+### `0x1F` ILA milestone
 
-The captured value `16'hA301` belongs to the composed `link_debug_16` status bus. It is **not RX payload data** and it is **not an OMD-C `MsgType`**.
+![0x1F ILA hardware milestone](img/0x1f_ila.png)
 
-Both observed GTH channels have not yet completed GT initialization. Therefore the current fault boundary is upstream of the TX feed FSM, packet progression logic, and fixed-slice OMD-C parser.
+The pointer marks the live `link_status_sys = 16'h001F` capture. Within the low-six-bit initialization group, every tracked condition has asserted except RX CDR stability. This is a hardware initialization milestone, not RX payload data and not an OMD-C `MsgType`.
 
-The next investigation remains the shared physical dependency chain:
+The previous GT initialization fault domain has therefore been reduced to the serial receive boundary. The next expected state is `16'h003F` after RX CDR stability asserts. Until then, parser RTL remains outside the active fault domain.
+
+The remaining acceptance chain is deliberately narrow:
 
 ```text
-Freerun clock
-    -> GT reset helper
-    -> GTHE4_COMMON / QPLL0
-    -> channel PMA reset completion
-    -> TX/RX reset done
-    -> TXUSRCLK2 / RXUSRCLK2
+SFP TX
+    -> optical loopback
+    -> SFP RX
+    -> RX CDR stability
     -> changing raw RX words
-    -> frame progression
+    -> Level-0 pattern match
+    -> fixed-frame progression
     -> OMD-C field extraction
 ```
 
-The repository does not currently claim that MGTREFCLK, QPLL0, reset sequencing, or lane mapping is the proven root cause. That conclusion requires status-bit and clock evidence.
+No production RTL, board-routing recipe, transceiver primitive placement, XDC/TCL constraint, or calibration script is published by this update.
 
 ---
 
@@ -86,9 +88,10 @@ Acceptance is intentionally ordered. A later protocol check cannot compensate fo
 ### GT initialization and clocks
 
 - [ ] Prove the freerun/reset-helper clock is active
+- [x] Prove a continuous MGT reference clock at the selected GT boundary
 - [ ] Prove `gtpowergood`
 - [ ] Prove QPLL0 lock and reference-clock selection
-- [ ] Prove TX/RX PMA reset completion
+- [x] Prove TX/RX PMA reset completion
 - [ ] Prove `tx_reset_done` and `rx_reset_done`
 - [ ] Prove RX CDR stability
 - [ ] Observe TXUSRCLK2 and RXUSRCLK2 counters
@@ -425,6 +428,14 @@ The repository was therefore split into two tracks:
 
 - Version 2 proves stable real-hardware packet movement and measured latency with RX Buffer ON.
 - Version 1 preserves RX Buffer Bypass for the 40 ns-class deterministic research path after the baseline is established.
+
+### 2026-07-13 — `0x1F` ILA Hardware Milestone
+
+Reference-clock validation and a corrected GT integration moved the live board beyond the earlier reset-boundary condition. The routed design generated a fresh bitstream, and the dedicated bring-up status reached `16'h001F` in ILA.
+
+This state proves that the tracked PMA and TX-side initialization conditions have completed. The remaining active physical boundary is RX CDR stability through the optical loopback. The parser remains unchanged until raw RX movement is demonstrated.
+
+The public evidence records the state transition and acceptance order only; implementation scripts and physical placement details remain private.
 
 ### Built From Almost Nothing
 
