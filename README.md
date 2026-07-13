@@ -37,39 +37,45 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ## Current Hardware Status — 2026-07-13
 
-SnowSakura has moved from a reset-blocked GTH state to the final receive-lock boundary on the real Puzhi ZU15EG + SFP/GTH setup. The current hardware evidence isolates the remaining blocker to RX CDR stability on the optical receive path; the OMD-C parser is not the failing block.
+SnowSakura has crossed the first real-hardware data-ingress boundary on the Puzhi ZU15EG + SFP/GTH setup. The earlier reset-only state is closed: the selected reference-clock and QPLL chain is running, TX is active, the optical loopback reaches RX, and continuously changing 32-bit words are now registered in the RX user-clock domain.
+
+This completes the **physical-link and live-RX-ingress stage** for the active bring-up image. Parser-side observation has started consuming live hardware data instead of a constant reset/debug value. Deterministic frame alignment and correct OMD-C field acceptance remain the next stage; random-looking RX words are not presented as protocol proof.
 
 ### Proven infrastructure
 
 - Puzhi ZU15EG device, PL clock, LED, SFP disable, GTH lane, and MGT reference-clock mappings are incorporated into the active project.
 - The reusable external top owns GT Wizard integration, reset sequencing, TX generation, RX capture, status reporting, and ILA visibility.
 - Exact bitstream programming and matching ILA probe refresh have been demonstrated.
-- A continuous MGT reference-clock source has been verified at the selected hardware boundary.
-- The corrected integration routes cleanly and produces a hardware-programmable bitstream.
-- Live ILA evidence shows PMA initialization and the tracked TX-side divider/bypass conditions have completed.
+- A continuous MGT reference-clock source and QPLL lock have been verified at the selected hardware boundary.
+- The corrected GT integration routes cleanly, produces a hardware-programmable bitstream, and advances into active TX/RX operation.
+- The selected SFP TX-to-RX optical route carries live data into the intended RX lane.
+- Live ILA captures show changing RX words, active PRBS/training instrumentation, and receive-side progress beyond the former CDR-blocked boundary.
 
-### `0x1F` ILA milestone
+### Evidence A — active PRBS/training observer
 
-![0x1F ILA hardware milestone](img/0x1f_ila.png)
+![Active PRBS and training observer](img/2026-07-13_prbs_observer_activity.png)
 
-The pointer marks the live `link_status_sys = 16'h001F` capture. Within the low-six-bit initialization group, every tracked condition has asserted except RX CDR stability. This is a hardware initialization milestone, not RX payload data and not an OMD-C `MsgType`.
+The red pointer marks a live hardware capture in which the quick-check bit is toggling across samples and the PRBS event counter has advanced to `32'h000000D4`. The counter snapshot proves that the observer is clocked and active; it is not presented as a BER result.
 
-The previous GT initialization fault domain has therefore been reduced to the serial receive boundary. The next expected state is `16'h003F` after RX CDR stability asserts. Until then, parser RTL remains outside the active fault domain.
+### Evidence B — changing RX words in fabric
 
-The remaining acceptance chain is deliberately narrow:
+![Live 32-bit RX words in the RX user-clock domain](img/2026-07-13_live_rx_words.png)
+
+The yellow pointer marks `rx_data_sfp2_r = 32'h2A2898CA`. Adjacent samples contain different 32-bit values, while the same capture records `link_debug_16 = 16'hBFFB`, a training match count of `32'h000000C7`, and training progress state `4'h6`. This is direct evidence that real receive words are reaching fabric registers and that the training observer is advancing. `16'hBFFB` is a debug snapshot, not an OMD-C `MsgType`, and the changing words are not yet claimed as an accepted packet.
+
+### Stage transition and next step
 
 ```text
-SFP TX
-    -> optical loopback
-    -> SFP RX
-    -> RX CDR stability
-    -> changing raw RX words
-    -> Level-0 pattern match
-    -> fixed-frame progression
-    -> OMD-C field extraction
+Completed:
+reference clock -> QPLL / GT initialization -> TX optical launch
+                -> optical loopback -> RX data recovery -> changing fabric words
+
+Next:
+deterministic training lock -> fixed frame boundary -> fixed 48-byte OMD-C vector
+                            -> MsgType 30 extraction -> BER and latency evidence
 ```
 
-No production RTL, board-routing recipe, transceiver primitive placement, XDC/TCL constraint, or calibration script is published by this update.
+The next implementation stage is therefore deterministic framing, not more reset debugging: establish repeatable training lock, prove fixed-frame progression, transmit the fixed 48-byte vector, and accept Little-Endian `MsgType = 16'h001E` at the parser boundary. No production RTL, GT integration recipe, debug-bus encoding, board-routing detail, XDC/TCL constraint, or calibration script is published by this update.
 
 ---
 
@@ -87,26 +93,27 @@ Acceptance is intentionally ordered. A later protocol check cannot compensate fo
 
 ### GT initialization and clocks
 
-- [ ] Prove the freerun/reset-helper clock is active
+- [x] Prove the freerun/reset-helper clock is active
 - [x] Prove a continuous MGT reference clock at the selected GT boundary
-- [ ] Prove `gtpowergood`
-- [ ] Prove QPLL0 lock and reference-clock selection
+- [x] Prove `gtpowergood`
+- [x] Prove QPLL0 lock and reference-clock selection
 - [x] Prove TX/RX PMA reset completion
-- [ ] Prove `tx_reset_done` and `rx_reset_done`
-- [ ] Prove RX CDR stability
-- [ ] Observe TXUSRCLK2 and RXUSRCLK2 counters
+- [x] Prove `tx_reset_done` and `rx_reset_done`
+- [x] Prove RX CDR stability
+- [x] Observe active TXUSRCLK2 and RXUSRCLK2 domains in hardware
 - [ ] Verify generated clock periods with `report_clocks`
 
 ### Physical data movement
 
-- [ ] Show changing TX words in the intended TX user-clock domain
-- [ ] Prove the selected SFP/lane/loopback route
-- [ ] Show changing raw RX words on the intended lane
+- [x] Show changing TX words in the intended TX user-clock domain
+- [x] Prove the selected SFP/lane/loopback route
+- [x] Show changing raw RX words on the intended lane
 - [ ] Pass the Level-0 training-pattern checker
 - [ ] Assert `pattern_match_sticky` with zero mismatch growth
 
 ### OMD-C hardware path
 
+- [x] Deliver live RX words to the parser observation boundary
 - [ ] Transmit the fixed 48-byte OMD-C payload from ROM
 - [ ] Prove `payload_start`
 - [ ] Prove `rx_payload_idx` progression
@@ -429,13 +436,17 @@ The repository was therefore split into two tracks:
 - Version 2 proves stable real-hardware packet movement and measured latency with RX Buffer ON.
 - Version 1 preserves RX Buffer Bypass for the 40 ns-class deterministic research path after the baseline is established.
 
-### 2026-07-13 — `0x1F` ILA Hardware Milestone
+### 2026-07-13 — From `0x1F` Initialization to Live Optical RX Data
 
-Reference-clock validation and a corrected GT integration moved the live board beyond the earlier reset-boundary condition. The routed design generated a fresh bitstream, and the dedicated bring-up status reached `16'h001F` in ILA.
+The day began with reference-clock validation and a corrected GT integration moving the live board beyond the earlier reset-boundary condition. The routed design generated a fresh bitstream, and the dedicated bring-up status first reached `16'h001F` in ILA.
 
-This state proves that the tracked PMA and TX-side initialization conditions have completed. The remaining active physical boundary is RX CDR stability through the optical loopback. The parser remains unchanged until raw RX movement is demonstrated.
+![Earlier 0x1F initialization boundary](img/0x1f_ila.png)
 
-The public evidence records the state transition and acceptance order only; implementation scripts and physical placement details remain private.
+Later hardware captures crossed that boundary: TX became active through the selected optical loopback, RX produced changing 32-bit fabric words, and the PRBS/training observer advanced. The parser observation boundary is now driven by live hardware traffic rather than a frozen status value.
+
+This closes the physical-link/no-data fault domain for the current bring-up image. The next public milestone is deterministic frame and protocol acceptance: stable training lock, fixed 48-byte OMD-C transfer, Little-Endian `MsgType = 16'h001E`, followed by BER and measured latency evidence.
+
+The public evidence records the state transition and acceptance order only; source RTL, integration scripts, status-bus encoding, calibration logic, and physical placement details remain private.
 
 ### Built From Almost Nothing
 
@@ -460,6 +471,8 @@ The repository records the learning process from RTL and simulation through FDRE
 ### Private lab
 
 - Raw Mode production RTL
+- exact GT Wizard integration and reset dependency
+- internal debug-bus bit assignments and training/checker implementation
 - exact XDC/TCL placement strategy
 - Pblock coordinates and LOC/BEL assignments
 - phase/alignment calibration scripts
