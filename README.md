@@ -44,6 +44,7 @@ This is the boundary that matters: the result is no longer inferred from changin
 ### Final hardware evidence — qualified PRBS31 link
 
 ![Qualified GT PRBS31 optical-link closure](img/2026-07-14_gth_prbs31_link_closure.svg)
+![sche2](img/sschedele.png)
 
 The dated ILA capture records the final qualified state at 2026-07-14 20:05:39. The live debug snapshot reaches 16'hFEE7, the tracked link-status fields are asserted, and the visible PRBS quick-qualification bits remain High across the capture window. The event and retry counters are retained in the image as direct evidence that the result came from the running reset/acquisition controller rather than a constant test value.
 
