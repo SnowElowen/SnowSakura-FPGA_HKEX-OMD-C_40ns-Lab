@@ -23,7 +23,7 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ## Contents
 
-- [Current Hardware Status](#current-hardware-status--2026-07-14)
+- [Current Hardware Status](#current-hardware-status--2026-07-16)
 - [Immediate Hardware Checklist](#immediate-hardware-checklist)
 - [HKEX OMD-C Exchange Feed Simulator](#hkex-omd-c-exchange-feed-simulator)
 - [Architecture Tracks](#architecture-tracks)
@@ -35,46 +35,57 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ---
 
-## Current Hardware Status — 2026-07-14
+## Current Hardware Status — 2026-07-16
 
-SnowSakura has completed the **GTH physical-link bring-up stage** on the real Puzhi ZU15EG optical path. The active baseline now carries a GT-internal PRBS31 stream from SFP1 TX through the 10G-SR optical modules and OM4 fiber into SFP2 RX, where the receive CDR and GT PRBS31 checker reach the qualified locked state.
+SnowSakura has moved from the GT-internal PRBS31 proof into the **fabric-owned HKEX OMD-C exchange-feed model** on the real Puzhi ZU15EG optical path. The fixed feed source and TX state machine now release a deterministic 32-bit word sequence into GTH TX, the selected SFP2-to-SFP1 optical route is active, and changing Raw32 words reach the RX user-clock domain with `rx_ready = 1`.
 
-This is the boundary that matters: the result is no longer inferred from changing fabric words. The checker operates inside the GT and therefore removes the OMD-C parser, packet framing, word alignment, fabric TXDATA, and software scoreboard from the proof path. The reference clock, QPLL0 selection, reset dependency, physical lane direction, optical launch, receive recovery, PRBS selector integration, checker reset session, and RX polarity choice have now been closed as active bring-up fault domains.
+This closes the normal-data TX sequencing and raw RX transport boundary for the current build. It does not close protocol acceptance: the RX capture still shows no accepted marker/frame lock, `event_valid` remains Low, and the parsed `MsgSize`, `MsgType`, `SecurityCode`, `OrderId`, `Price`, `Quantity`, and `Side` fields remain zero. The next fault domain is therefore deterministic RX alignment and packet-boundary capture, not GTH bring-up.
 
-### Final hardware evidence — qualified PRBS31 link
+### Running optical hardware
 
-![Qualified GT PRBS31 optical-link closure](img/2026-07-14_gth_prbs31_link_closure.svg)
-![sche2](img/sschedele.png)
+![Puzhi ZU15EG dual-SFP optical setup](img/2026-07-16_zu15eg_optical_setup.jpeg)
 
-The dated ILA capture records the final qualified state at 2026-07-14 20:05:39. The live debug snapshot reaches 16'hFEE7, the tracked link-status fields are asserted, and the visible PRBS quick-qualification bits remain High across the capture window. The event and retry counters are retained in the image as direct evidence that the result came from the running reset/acquisition controller rather than a constant test value.
+The programmed ZU15EG, both 10G-SR optical modules, OM4 loopback, and live board indicators form the real hardware test path used for the captures below.
 
-### Closed GTH fault domains
+### TX evidence — deterministic OMD-C word progression
 
-| Boundary | Hardware result |
-|---|---|
-| MGT reference clock | One continuous proven reference drives the selected QPLL0 input |
-| QPLL0 / GT reset chain | Lock and reset-helper progression complete |
-| TX user path | TX Buffer Bypass completes and optical TX remains active |
-| Optical route | SFP1 TX → 10G-SR optics → OM4 → SFP2 RX is proven |
-| RX recovery | RX CDR reaches the qualified locked state |
-| GT BERT | Internal PRBS31 checker locks and reaches clean quick qualification |
-| Selector / checker start | Both-lane selector ambiguity and checker-reset startup ambiguity are closed |
-| RX polarity | The accepted polarity is selected from the checker result, not guessed from raw words |
+![Deterministic OMD-C TX word sequence in ILA](img/2026-07-16_tx_omdc_word_sequence.jpeg)
+
+The TX-domain ILA records `tx_ready = 1`, reset released, a changing 32-bit feed word, and the sequence/state fields advancing on consecutive TX user-clock cycles. This is direct hardware evidence that the exchange-feed model is releasing the programmed word stream through the fabric TX boundary.
+
+### RX evidence — raw data reaches the parser boundary
+
+![Changing Raw32 RX words with parser outputs still inactive](img/2026-07-16_rx_raw_capture_boundary.jpeg)
+
+The RX-domain ILA records `rx_ready = 1` and changing 32-bit raw words. In the same capture the marker/frame acceptance signals remain inactive and every parsed business field remains zero. The evidence therefore proves live normal-data ingress while locating the remaining failure above the GTH RX boundary and before fixed-slice OMD-C field acceptance.
+
+### Post-route timing evidence
+
+![Implemented exchange-feed and debug paths](img/2026-07-16_post_route_paths.jpeg)
+
+![Post-route timing summary](img/2026-07-16_timing_summary.jpeg)
+
+| Check | Routed result |
+|---|---:|
+| Setup WNS | +0.452 ns |
+| Setup TNS / failing endpoints | 0.000 ns / 0 |
+| Hold WHS | +0.013 ns |
+| Hold THS / failing endpoints | 0.000 ns / 0 |
+| Worst pulse-width slack | +0.543 ns |
+
+The reviewed exchange-feed paths remain within the two-logic-level budget; the visible selected paths contain zero or one logic level. The captured high-fanout value of 46 belongs to the current exchange-simulator/debug implementation and is recorded explicitly rather than projected onto the private fixed-slice parser path. All user-specified timing constraints in this implemented build are met.
 
 ### Stage transition
 
 ~~~text
-Completed GTH boundary:
-MGTREFCLK -> QPLL0 -> GT reset -> TX Buffer Bypass -> SFP1 optical TX
-           -> OM4 -> SFP2 RX -> CDR lock -> PRBS31 lock -> clean qualification
+Completed normal-data boundary:
+fixed OMD-C source -> TX feed FSM -> GTH TX / SFP2
+                  -> OM4 -> SFP1 / GTH RX -> changing Raw32 capture
 
-Next project boundary:
-fixed 48-byte OMD-C vector -> deterministic frame boundary
-                           -> Little-Endian MsgType 16'h001E
-                           -> fixed-slice parser -> routed timing and latency measurement
+Open protocol boundary:
+marker lock -> deterministic frame boundary -> 48-byte packet capture
+            -> Little-Endian MsgType 16'h001E -> parsed fields -> latency measurement
 ~~~
-
-**Engineering claim:** GTH bring-up is closed for this active RX Buffer ON / TX Buffer Bypass hardware baseline. This capture is a link-acquisition and clean-qualification result; the repository does not relabel it as a completed 24-hour BER run or as OMD-C parser acceptance. Those are separate measurements with separate counters.
 
 No production RTL, GT integration recipe, internal status-bit encoding, board-routing detail, XDC/TCL constraint, or calibration script is published by this update.
 
@@ -118,7 +129,8 @@ Acceptance is intentionally ordered. A later protocol check cannot compensate fo
 ### OMD-C hardware path
 
 - [x] Deliver live RX words to the parser observation boundary
-- [ ] Transmit the fixed 48-byte OMD-C payload from ROM
+- [x] Transmit the fixed OMD-C payload sequence from the fabric feed model
+- [x] Prove TX word-index and state progression in hardware
 - [ ] Prove `payload_start`
 - [ ] Prove `rx_payload_idx` progression
 - [ ] Prove `rx_frame_done`
@@ -127,7 +139,7 @@ Acceptance is intentionally ordered. A later protocol check cannot compensate fo
 
 ### Evidence and measurement
 
-- [ ] Post-route STA for the active RX Buffer ON build
+- [x] Post-route STA for the active RX Buffer ON exchange-feed build
 - [ ] Post-implementation SDF timing simulation
 - [ ] Eye Scan capture and interpretation
 - [ ] BER measurement
@@ -454,11 +466,17 @@ The public evidence records the state transition and acceptance order only; sour
 
 ### 2026-07-14 — GTH Physical Layer Closed with Internal PRBS31 BERT
 
-The final bring-up day converted the July 13 live-data milestone into a protocol-independent serial-link proof. GT-internal PRBS31 was enabled across the real SFP1-to-SFP2 optical route so that fabric word boundaries, training markers, packet capture, parser state, and OMD-C formatting could no longer contaminate the diagnosis.
+The final bring-up day converted the July 13 live-data milestone into a protocol-independent serial-link proof. GT-internal PRBS31 was enabled across the real SFP2-to-SFP1 optical route so that fabric word boundaries, training markers, packet capture, parser state, and OMD-C formatting could no longer contaminate the diagnosis.
 
 The remaining variables were removed in a controlled order: the known-good MGT reference and QPLL0 route were preserved, RX polarity was tested by checker outcome, PRBS selection was applied without lane-slice ambiguity, and the RX checker received an explicit post-reset counter-reset session. The receive side then reached CDR lock, PRBS lock, and the clean quick-qualification state recorded in the final ILA capture.
 
 This closes the GTH bring-up phase for the active RX Buffer ON / TX Buffer Bypass baseline. SnowSakura now moves from transceiver diagnosis to deterministic OMD-C framing and fixed-slice parser acceptance.
+
+### 2026-07-16 — Fabric TX/RX Exchange-Feed Milestone
+
+The project returned from the frozen PRBS diagnostic image to normal fabric-owned data. Hardware ILA captures now show deterministic TX word/state progression, live Raw32 RX activity across the proven SFP2-to-SFP1 optical path, and an implemented timing summary with WNS `+0.452 ns`, WHS `+0.013 ns`, and zero failing endpoints.
+
+The same RX capture makes the remaining boundary unambiguous: marker/frame acceptance has not asserted and all parsed OMD-C fields remain zero. The next step is to repair deterministic alignment and packet capture until the fixed 48-byte vector produces Little-Endian `MsgType = 16'h001E`; the GTH constants remain frozen while that upper-layer fault is isolated.
 
 ### Built From Almost Nothing
 
