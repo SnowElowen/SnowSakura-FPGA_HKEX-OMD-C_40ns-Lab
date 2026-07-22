@@ -23,7 +23,7 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ## Contents
 
-- [Current Hardware Status](#current-hardware-status--2026-07-16)
+- [Current Hardware Status](#current-hardware-status--2026-07-23)
 - [Immediate Hardware Checklist](#immediate-hardware-checklist)
 - [HKEX OMD-C Exchange Feed Simulator](#hkex-omd-c-exchange-feed-simulator)
 - [Architecture Tracks](#architecture-tracks)
@@ -35,57 +35,56 @@ The repository records both the active ZU15EG hardware-delivery path and the low
 
 ---
 
-## Current Hardware Status — 2026-07-16
+## Current Hardware Status — 2026-07-23
 
-SnowSakura has moved from the GT-internal PRBS31 proof into the **fabric-owned HKEX OMD-C exchange-feed model** on the real Puzhi ZU15EG optical path. The fixed feed source and TX state machine now release a deterministic 32-bit word sequence into GTH TX, the selected SFP2-to-SFP1 optical route is active, and changing Raw32 words reach the RX user-clock domain with `rx_ready = 1`.
+SnowSakura has completed the **golden single-direction laboratory foundation** on the real Puzhi ZU15EG optical path. The frozen physical direction is SFP2 / GT X0Y6 TX → 10G-SR optics → OM4 → SFP1 / GT X0Y7 RX, with fabric-owned Raw32 data above the verified GTH substrate.
 
-This closes the normal-data TX sequencing and raw RX transport boundary for the current build. It does not close protocol acceptance: the RX capture still shows no accepted marker/frame lock, `event_valid` remains Low, and the parsed `MsgSize`, `MsgType`, `SecurityCode`, `OrderId`, `Price`, `Quantity`, and `Side` fields remain zero. The next fault domain is therefore deterministic RX alignment and packet-boundary capture, not GTH bring-up.
+The completed base now covers deterministic lab-frame generation, stable marker/alignment lock, continuous 12 × 32-bit packet capture, and fixed Message 0 parsing of the 48-byte HKEX OMD-C test vector. This closes the unfinished protocol boundary documented on 2026-07-16: the hardware now asserts packet completion and parser validity, returns parsed_error = 0, and reconstructs the programmed Add Order fields in the RX user-clock domain.
 
-### Running optical hardware
+### Hardware Eye Scan — receiver sampling margin
 
-![Puzhi ZU15EG dual-SFP optical setup](img/2026-07-16_zu15eg_optical_setup.jpeg)
+![IBERT Eye Scan with 77.78 percent open UI](img/2026-07-23_ibert_eye_scan_open_ui_77_78.png)
 
-The programmed ZU15EG, both 10G-SR optical modules, OM4 loopback, and live board indicators form the real hardware test path used for the captures below.
+The In-System IBERT scan is a real GT receiver measurement on the active optical path. The completed contour reports:
 
-### TX evidence — deterministic OMD-C word progression
-
-![Deterministic OMD-C TX word sequence in ILA](img/2026-07-16_tx_omdc_word_sequence.jpeg)
-
-The TX-domain ILA records `tx_ready = 1`, reset released, a changing 32-bit feed word, and the sequence/state fields advancing on consecutive TX user-clock cycles. This is direct hardware evidence that the exchange-feed model is releasing the programmed word stream through the fabric TX boundary.
-
-### RX evidence — raw data reaches the parser boundary
-
-![Changing Raw32 RX words with parser outputs still inactive](img/2026-07-16_rx_raw_capture_boundary.jpeg)
-
-The RX-domain ILA records `rx_ready = 1` and changing 32-bit raw words. In the same capture the marker/frame acceptance signals remain inactive and every parsed business field remains zero. The evidence therefore proves live normal-data ingress while locating the remaining failure above the GTH RX boundary and before fixed-slice OMD-C field acceptance.
-
-### Post-route timing evidence
-
-![Implemented exchange-feed and debug paths](img/2026-07-16_post_route_paths.jpeg)
-
-![Post-route timing summary](img/2026-07-16_timing_summary.jpeg)
-
-| Check | Routed result |
+| Metric | Measured result |
 |---|---:|
-| Setup WNS | +0.452 ns |
-| Setup TNS / failing endpoints | 0.000 ns / 0 |
-| Hold WHS | +0.013 ns |
-| Hold THS / failing endpoints | 0.000 ns / 0 |
-| Worst pulse-width slack | +0.543 ns |
+| Open area | 7680 |
+| Open UI | 77.78% |
+| Horizontal scan range | -0.500 UI to +0.500 UI |
+| Vertical scan range | 100% |
+| Horizontal / vertical increment | 8 / 8 |
 
-The reviewed exchange-feed paths remain within the two-logic-level budget; the visible selected paths contain zero or one logic level. The captured high-fanout value of 46 belongs to the current exchange-simulator/debug implementation and is recorded explicitly rather than projected onto the private fixed-slice parser path. All user-specified timing constraints in this implemented build are met.
+This closes the earlier non-responsive/fake-plot Eye Scan fault domain. It is receiver sampling-margin evidence for this configuration; it is not substituted for a long-duration BER run.
 
-### Stage transition
+### Hardware packet capture and field reconstruction
+
+![Locked 12-word capture with OMD-C parser fields](img/2026-07-23_rx_capture_parser_fields.png)
+
+The RX-domain ILA records align_locked = 1 while the capture index advances through the fixed packet window. The parser reconstructs MsgType = 16'h001E, OrderId = 64'h1122334455667788, PriceRaw = 32'h00007A12, and Quantity = 32'h000003E8 directly from the received hardware stream.
+
+### Hardware valid-chain closure
+
+![Packet-valid to parsed-valid hardware closure](img/2026-07-23_packet_valid_parsed_valid.png)
+
+The ILA records capture_index = 0...11, followed by a one-cycle packet_valid pulse and then a one-cycle parsed_valid pulse. parsed_error remains Low, align_locked remains High, and the packet counter increments. This is the physical closure of marker/alignment → 12-word capture → fixed Message 0 parser for the current lab vector.
+
+### Completed foundation boundary
 
 ~~~text
-Completed normal-data boundary:
-fixed OMD-C source -> TX feed FSM -> GTH TX / SFP2
-                  -> OM4 -> SFP1 / GTH RX -> changing Raw32 capture
-
-Open protocol boundary:
-marker lock -> deterministic frame boundary -> 48-byte packet capture
-            -> Little-Endian MsgType 16'h001E -> parsed fields -> latency measurement
+Golden TX / Lab Source
+    -> GTH TX / SFP2
+    -> 10G-SR optics / OM4
+    -> SFP1 / GTH RX
+    -> stable Raw32 marker alignment
+    -> 12 x 32-bit registered packet capture
+    -> fixed OMD-C Message 0 parser
+    -> packet_valid -> parsed_valid, parsed_error = 0
 ~~~
+
+The current BER/BERT exercise used only a **10^8-bit test depth** because this is not the final qualification build. That number is recorded as the measured sample depth, not relabeled as a 10^-8 BER result and not promoted to the future long-duration BER sign-off.
+
+The exchange-feed simulator initial version and this single-direction Raw32 normal-data integration are now frozen as the reusable lab base. Remaining work such as post-implementation SDF, final long-duration BER qualification, measured wire-to-wire latency, production 10GBASE-R normalization, RX Buffer Bypass research, and dual-line A/B arbitration belongs to later stages and does not reopen this completed foundation.
 
 No production RTL, GT integration recipe, internal status-bit encoding, board-routing detail, XDC/TCL constraint, or calibration script is published by this update.
 
@@ -129,21 +128,23 @@ Acceptance is intentionally ordered. A later protocol check cannot compensate fo
 ### OMD-C hardware path
 
 - [x] Deliver live RX words to the parser observation boundary
-- [x] Transmit the fixed OMD-C payload sequence from the fabric feed model
+- [x] Transmit the fixed 48-byte OMD-C payload sequence from the fabric feed model
 - [x] Prove TX word-index and state progression in hardware
-- [ ] Prove `payload_start`
-- [ ] Prove `rx_payload_idx` progression
-- [ ] Prove `rx_frame_done`
-- [ ] Reconstruct Little-Endian `MsgType` as `16'h001E`
-- [ ] Assert `msgtype_30_seen`
+- [x] Prove stable bounded marker/alignment lock with `align_locked = 1`
+- [x] Prove registered `capture_index = 0...11` progression
+- [x] Prove one-cycle `packet_valid` after the 12-word capture
+- [x] Reconstruct Little-Endian `MsgType` as `16'h001E`
+- [x] Assert one-cycle `parsed_valid` with `parsed_error = 0`
+- [x] Reconstruct the programmed Add Order fields in hardware
 
 ### Evidence and measurement
 
 - [x] Post-route STA for the active RX Buffer ON exchange-feed build
+- [x] Real-hardware Eye Scan capture and interpretation: open area 7680, open UI 77.78%
+- [x] Current BER/BERT sample-depth exercise: 10^8 bits
+- [x] Continuous hardware valid-chain proof: alignment → capture → packet valid → parsed valid
 - [ ] Post-implementation SDF timing simulation
-- [ ] Eye Scan capture and interpretation
-- [ ] BER measurement
-- [ ] Long-duration error-free hardware run
+- [ ] Final long-duration BER qualification
 - [ ] Measured Version 2 wire-to-wire latency report
 - [ ] Version 1 RX Buffer Bypass re-validation
 - [ ] Dual-line A/B arbitration validation
@@ -192,17 +193,17 @@ OMD-C integer fields are Little-Endian. `MsgType = 30` appears on the byte strea
 
 ### Staged test plan
 
-1. **Level 0 — GT link and training pattern**  
-   Prove clocks, resets, QPLL/CDR state, TX-to-RX movement, lane selection, and checker behavior.
+1. **Level 0 — GT link and training pattern: completed**  
+   Clocks, resets, QPLL/CDR state, selected optical direction, GT-internal PRBS31 lock, checker startup, and RX polarity are closed for the frozen base.
 
-2. **Level 1 — Fixed 48-byte OMD-C payload**  
-   Prove ROM transmission, payload index progression, frame completion, and `MsgType = 30` extraction.
+2. **Level 1 — Fixed 48-byte OMD-C payload: completed**  
+   Fabric TX progression, stable marker alignment, 12 × 32-bit capture, packet completion, `MsgType = 16'h001E`, Add Order field reconstruction, and the packet-valid-to-parser-valid chain are proven in hardware.
 
-3. **Level 2 — Ethernet / IPv4 / UDP framing**  
-   Add preamble, SFD, headers, FCS, and IFG only after the fixed payload path is proven.
+3. **Level 2 — production 10GBASE-R normalization: separate later stage**  
+   Ethernet PCS/framing, IPv4/UDP normalization, and a Registered OMD-C Normalized Window are not inserted into this custom Raw32 laboratory source. They begin only when the project switches to a standards-coded external feed.
 
-4. **Measurement**  
-   Record routed timing, SDF behavior, Eye Scan, BER, long-duration error counters, and board latency.
+4. **Measurement status**  
+   Routed timing and the real-hardware Eye Scan are complete. The current BER/BERT depth is 10^8 bits; SDF, final long-duration BER, and measured board latency remain later sign-off items.
 
 ---
 
@@ -474,9 +475,17 @@ This closes the GTH bring-up phase for the active RX Buffer ON / TX Buffer Bypas
 
 ### 2026-07-16 — Fabric TX/RX Exchange-Feed Milestone
 
-The project returned from the frozen PRBS diagnostic image to normal fabric-owned data. Hardware ILA captures now show deterministic TX word/state progression, live Raw32 RX activity across the proven SFP2-to-SFP1 optical path, and an implemented timing summary with WNS `+0.452 ns`, WHS `+0.013 ns`, and zero failing endpoints.
+The project returned from the frozen PRBS diagnostic image to normal fabric-owned data. Hardware ILA captures showed deterministic TX word/state progression, live Raw32 RX activity across the proven SFP2-to-SFP1 optical path, and an implemented timing summary with WNS `+0.452 ns`, WHS `+0.013 ns`, and zero failing endpoints.
 
-The same RX capture makes the remaining boundary unambiguous: marker/frame acceptance has not asserted and all parsed OMD-C fields remain zero. The next step is to repair deterministic alignment and packet capture until the fixed 48-byte vector produces Little-Endian `MsgType = 16'h001E`; the GTH constants remain frozen while that upper-layer fault is isolated.
+At that historical checkpoint marker/frame acceptance had not asserted and the parsed OMD-C fields remained zero. The failure was isolated above the frozen GTH substrate and was subsequently closed by the July 23 laboratory-base build.
+
+### 2026-07-23 — Golden Raw32 OMD-C Laboratory Foundation Completed
+
+The completed build proves stable `align_locked = 1`, deterministic capture-index progression across all 12 payload words, a one-cycle `packet_valid` pulse, a following one-cycle `parsed_valid` pulse, and `parsed_error = 0`. The fixed parser reconstructs `MsgType = 16'h001E`, `OrderId = 64'h1122334455667788`, `PriceRaw = 32'h00007A12`, and `Quantity = 32'h000003E8` from the real optical RX stream.
+
+A real In-System IBERT Eye Scan on the same active direction reports open area 7680 and open UI 77.78%, closing the earlier Eye Scan execution fault domain. The current BER/BERT test depth is 10^8 bits and is intentionally recorded as a pre-final measurement depth, while long-duration BER, SDF, wire-to-wire latency, production 10GBASE-R normalization, and dual-line arbitration remain separate later stages.
+
+This completes and freezes the exchange-feed simulator initial version plus the single-direction Raw32 alignment/capture/fixed-parser integration as the reusable SnowSakura laboratory foundation.
 
 ### Built From Almost Nothing
 
