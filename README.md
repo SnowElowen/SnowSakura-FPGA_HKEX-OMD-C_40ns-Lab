@@ -43,7 +43,7 @@ SnowSakura has completed and frozen the **golden single-direction laboratory fou
 The completed base covers deterministic lab-frame generation, stable marker/alignment lock, continuous registered packet capture, and fixed Message 0 parsing across repeated OMD-C packet forms. The hardware repeatedly asserts `parsed_valid`, holds `parsed_error = 0`, and reconstructs the programmed Add/Modify Order fields in the RX user-clock domain. This is real optical-path hardware closure, not a simulation-only milestone.
 
 ### Hardware Eye Scan — receiver sampling margin
-![pack](img/parckedata.png)
+![Continuous multi-packet OMD-C parser hardware closure](img/2026-07-23_continuous_multi_packet_parser.png)
 ![IBERT Eye Scan with 77.78 percent open UI](img/2026-07-23_ibert_eye_scan_open_ui_77_78.png)
 
 The In-System IBERT scan is a real GT receiver measurement on the active optical path. The completed contour reports:
